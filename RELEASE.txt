@@ -1,0 +1,35 @@
+Apeiron Launcher — Windows release
+====================================
+
+Requirements
+  - Windows 10/11 x64
+  - WebView2 Runtime (for Microsoft sign-in)
+  - Internet for first-time Minecraft / Java download
+
+Quick start
+  1. Extract Apeiron.exe to any folder (or run from this folder).
+  2. Start Apeiron.exe.
+  3. Create an instance and press Play.
+  4. Oracle JDK installs silently on first launch if Java is missing.
+
+Folders created next to the executable
+  .minecraft/   game files (versions, libraries, assets)
+  instances/    per-build mods, config, saves
+  config/       settings, builds list, encrypted auth
+  logs/         launcher and install logs
+
+Notes
+  - No .NET SDK required — self-contained single-file build.
+  - Close the launcher while playing: Minecraft keeps running.
+  - Full changelog: CHANGELOG.md in the source repository.
+
+Требования
+  - Windows 10/11 x64
+  - WebView2 Runtime (вход Microsoft)
+  - Интернет для первой установки Minecraft / Java
+
+Быстрый старт
+  1. Распакуйте Apeiron.exe в любую папку.
+  2. Запустите Apeiron.exe.
+  3. Создайте сборку и нажмите «Играть».
+  4. Oracle JDK установится тихо при первом запуске, если Java нет.

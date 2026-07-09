@@ -1,0 +1,11 @@
+dist/
+bin/
+obj/
+logs/
+instances/
+files/
+.minecraft/
+config/
+*.user
+*.suo
+.vs/

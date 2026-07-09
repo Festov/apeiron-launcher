@@ -1,0 +1,27 @@
+<Window x:Class="Apeiron.AuthWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Microsoft sign-in"
+        Height="700" Width="900"
+        WindowStyle="SingleBorderWindow"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        MinHeight="550" MinWidth="750">
+    
+    <Grid Background="#FFFFFF">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        
+        <Border Grid.Row="0" Background="#F9FAFB" Padding="16" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
+            <StackPanel>
+                <TextBlock x:Name="AuthHeadingText" Text="Sign in" FontSize="18" FontWeight="700" Foreground="#1F2937"/>
+                <TextBlock x:Name="AuthSubtitleText" Text="Sign in with Microsoft" FontSize="12" Foreground="#6B7280" Margin="0,2,0,0"/>
+            </StackPanel>
+        </Border>
+        
+        <wv2:WebView2 x:Name="AuthWebView" Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+    </Grid>
+</Window>

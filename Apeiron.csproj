@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <AssemblyTitle>Apeiron Launcher</AssemblyTitle>
+    <Authors>Apeiron</Authors>
+    <Description>Minecraft Launcher for Apeiron</Description>
+    <Version>1.4.0</Version>
+    
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2210.55" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Apeiron.Tests\**" />
+    <None Remove="Apeiron.Tests\**" />
+    <EmbeddedResource Remove="Apeiron.Tests\**" />
+    <Page Remove="Apeiron.Tests\**" />
+  </ItemGroup>
+
+  <Target Name="GenerateLauncherMetadata" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <LauncherMetadataFile>$(IntermediateOutputPath)LauncherMetadata.g.cs</LauncherMetadataFile>
+    </PropertyGroup>
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\generate-launcher-metadata.ps1&quot; -Repo &quot;$(GitHubRepository)&quot; -OutputPath &quot;$(LauncherMetadataFile)&quot;" />
+    <ItemGroup>
+      <Compile Include="$(LauncherMetadataFile)" />
+    </ItemGroup>
+  </Target>
+
+</Project>
