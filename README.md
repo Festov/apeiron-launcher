@@ -37,13 +37,6 @@ Skip tests when iterating locally:
 
 ### GitHub Release
 
-Push a version tag to publish the zip automatically:
-
-```bash
-git tag v1.4.0
-git push origin v1.4.0
-```
-
 Repository: [Festov/apeiron-launcher](https://github.com/Festov/apeiron-launcher)
 
 Workflow: `.github/workflows/release.yml`
