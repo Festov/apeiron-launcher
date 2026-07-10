@@ -143,7 +143,7 @@ public partial class SettingsWindow : Window, ILocalizable
                 return;
             }
 
-            var zipPath = await LauncherUpdateService.DownloadUpdatePackageAsync(update.DownloadUrl);
+            var zipPath = await LauncherUpdateService.DownloadUpdatePackageAsync(update.DownloadUrl, update.ExpectedSha256);
             var newExe = LauncherUpdateService.ExtractLauncherExecutable(zipPath);
             LauncherUpdateService.ScheduleApplyUpdate(newExe);
             Application.Current.Shutdown();
@@ -163,10 +163,13 @@ public partial class SettingsWindow : Window, ILocalizable
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!int.TryParse(RamTextBox.Text.Trim(), out var ram) || ram < 1 || ram > 64)
+        if (!int.TryParse(RamTextBox.Text.Trim(), out var ram) || ram < 1 || ram > SystemMemoryHelper.GetRecommendedMaxRamGb())
         {
-            MessageBox.Show(LocalizationService.T("settings.ram_invalid"), LocalizationService.T("common.settings"),
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(
+                LocalizationService.F("settings.ram_invalid", SystemMemoryHelper.GetRecommendedMaxRamGb()),
+                LocalizationService.T("common.settings"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
             return;
         }
 

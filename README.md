@@ -28,6 +28,7 @@ This runs tests, publishes a self-contained `Apeiron.exe`, and creates:
 |------|-------------|
 | `bin/Release/net8.0-windows/win-x64/publish/Apeiron.exe` | Portable launcher (~75 MB) |
 | `dist/Apeiron-<version>-win-x64.zip` | Zip for distribution (exe + `RELEASE.txt`) |
+| `dist/Apeiron-<version>-win-x64.zip.sha256` | SHA256 checksum for auto-update verification |
 
 Skip tests when iterating locally:
 
@@ -94,4 +95,9 @@ Checklists: [TESTING.md](TESTING.md)
 
 ## Settings
 
-RAM, language, and offline nickname are configured in the launcher UI. Minecraft data is stored in `.minecraft` next to the executable.
+- **RAM** — global default (capped to ~75% of system memory)
+- **Language** — auto / English / Russian
+- **Offline only** — hide Microsoft sign-in
+- **Check for updates** — prompt on startup; manual check in settings
+
+Minecraft data is stored in `.minecraft` next to the executable.

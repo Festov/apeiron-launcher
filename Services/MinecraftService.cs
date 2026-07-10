@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -158,7 +159,8 @@ public class MinecraftService
                     await File.WriteAllTextAsync(assetIndexPath, assetJson);
                     
                     Log?.Invoke(LocalizationService.T("log.mc.downloading_all_assets"));
-                    await DownloadAllAssets(assetId, cancellationToken);
+                    if (!await DownloadAllAssets(assetId, cancellationToken))
+                        return false;
                 }
             }
 
@@ -241,7 +243,7 @@ public class MinecraftService
         }
     }
 
-    private async Task DownloadAllAssets(string version, CancellationToken cancellationToken = default)
+    private async Task<bool> DownloadAllAssets(string version, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -251,7 +253,7 @@ public class MinecraftService
             if (!File.Exists(assetIndexPath))
             {
                 Log?.Invoke(LocalizationService.F("log.mc.index_file_not_found", assetIndexPath));
-                return;
+                return false;
             }
 
             var assetIndexJson = await File.ReadAllTextAsync(assetIndexPath);
@@ -261,11 +263,12 @@ public class MinecraftService
             if (objects == null)
             {
                 Log?.Invoke(LocalizationService.T("log.mc.no_objects_in_index"));
-                return;
+                return false;
             }
 
             var total = objects.Count;
             var downloaded = 0;
+            var failures = 0;
             var assetsDir = Path.Combine(MinecraftDir, "assets", "objects");
 
             Log?.Invoke(LocalizationService.F("log.mc.assets_total", total));
@@ -300,7 +303,7 @@ public class MinecraftService
                     }
                     catch
                     {
-                        // Пропускаем
+                        Interlocked.Increment(ref failures);
                     }
 
                     var current = Interlocked.Increment(ref downloaded);
@@ -313,13 +316,21 @@ public class MinecraftService
                         );
                     }
                 });
-            });
+            }, cancellationToken);
+
+            if (failures > 0)
+            {
+                Log?.Invoke(LocalizationService.F("log.mc.assets_partial_fail", failures, total));
+                return false;
+            }
 
             Log?.Invoke(LocalizationService.F("log.mc.assets_done", downloaded, total));
+            return true;
         }
         catch (Exception ex)
         {
             Log?.Invoke(LocalizationService.F("log.mc.assets_error", ex.Message));
+            return false;
         }
     }
 
@@ -428,11 +439,44 @@ public class MinecraftService
 
             var virtualObjectsDir = Path.Combine(virtualDir, "objects");
             
-            await Task.Run(() => CopyDirectory(objectsDir, virtualObjectsDir));
+            if (!TryCreateDirectoryLink(virtualObjectsDir, objectsDir))
+                await Task.Run(() => CopyDirectory(objectsDir, virtualObjectsDir));
         }
         catch (Exception ex)
         {
             Log?.Invoke(LocalizationService.F("log.mc.virtual_assets_error", ex.Message));
+        }
+    }
+
+    private static bool TryCreateDirectoryLink(string linkPath, string targetPath)
+    {
+        try
+        {
+            if (Directory.Exists(linkPath))
+                Directory.Delete(linkPath);
+
+            Directory.CreateSymbolicLink(linkPath, targetPath);
+            return Directory.Exists(linkPath);
+        }
+        catch
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/c mklink /J \"{linkPath}\" \"{targetPath}\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                using var process = Process.Start(psi);
+                process?.WaitForExit();
+                return process?.ExitCode == 0 && Directory.Exists(linkPath);
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 

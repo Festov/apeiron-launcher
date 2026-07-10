@@ -21,12 +21,14 @@ jobs:
 
       - name: Build release package
         shell: pwsh
-        run: ./build-release.ps1 -SkipTests
+        run: ./build-release.ps1
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Apeiron-*.zip
+          files: |
+            dist/Apeiron-*.zip
+            dist/Apeiron-*.zip.sha256
           generate_release_notes: true

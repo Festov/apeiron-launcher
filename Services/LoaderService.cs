@@ -91,11 +91,11 @@ public class LoaderService
             var installerPath = Path.Combine(_minecraftDir, $"forge-installer-{mcVersion}-{forgeVersion}.jar");
 
             Log?.Invoke(LocalizationService.F("log.loader.downloading_installer", "Forge"));
-            await DownloadFile(installerUrl, installerPath);
+            await DownloadFile(installerUrl, installerPath, cancellationToken);
 
             var args = $"-jar \"{installerPath}\" --installClient \"{_minecraftDir}\"";
             var process = StartJavaProcess(args, mcVersion);
-            await process.WaitForExitAsync();
+            await process.WaitForExitAsync(cancellationToken);
 
             if (process.ExitCode != 0)
                 Log?.Invoke(LocalizationService.F("log.loader.installer_exit_code", "Forge", process.ExitCode));
@@ -152,11 +152,11 @@ public class LoaderService
             var installerPath = Path.Combine(_minecraftDir, $"neoforge-installer-{neoVersion}.jar");
 
             Log?.Invoke(LocalizationService.F("log.loader.downloading_installer", "NeoForge"));
-            await DownloadFile(installerUrl, installerPath);
+            await DownloadFile(installerUrl, installerPath, cancellationToken);
 
             var args = $"-jar \"{installerPath}\" --installClient \"{_minecraftDir}\"";
             var process = StartJavaProcess(args, mcVersion);
-            await process.WaitForExitAsync();
+            await process.WaitForExitAsync(cancellationToken);
 
             if (process.ExitCode != 0)
                 Log?.Invoke(LocalizationService.F("log.loader.installer_exit_code", "NeoForge", process.ExitCode));
@@ -187,20 +187,7 @@ public class LoaderService
     private string? FindForgeVersionId(string mcVersion, string forgeVersion)
     {
         var expected = GetForgeVersionId(mcVersion, forgeVersion);
-        if (File.Exists(Path.Combine(_versionsDir, expected, $"{expected}.json")))
-            return expected;
-
-        if (!Directory.Exists(_versionsDir)) return null;
-
-        foreach (var dir in Directory.GetDirectories(_versionsDir))
-        {
-            var name = Path.GetFileName(dir);
-            if (name.Contains($"-forge-{forgeVersion}", StringComparison.OrdinalIgnoreCase) &&
-                File.Exists(Path.Combine(dir, $"{name}.json")))
-                return name;
-        }
-
-        return null;
+        return File.Exists(Path.Combine(_versionsDir, expected, $"{expected}.json")) ? expected : null;
     }
 
     private string? FindNeoForgeVersionId(string neoVersion)
@@ -290,12 +277,17 @@ public class LoaderService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var url = $"https://bmclapi2.bangbang93.com/forge/minecraft/{mcVersion}";
-            var json = JArray.Parse(await AppHttp.Client.GetStringAsync(url, cancellationToken));
-            return json
-                .Select(e => e["version"]?.ToString())
-                .Where(v => !string.IsNullOrWhiteSpace(v))
-                .Select(v => v!)
+            var xml = await AppHttp.Client.GetStringAsync(
+                "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml",
+                cancellationToken);
+            var doc = XDocument.Parse(xml);
+            var prefix = mcVersion + "-";
+
+            return doc.Descendants()
+                .Where(e => e.Name.LocalName == "version")
+                .Select(e => e.Value)
+                .Where(v => v.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(v => v[prefix.Length..])
                 .Distinct()
                 .OrderByDescending(v => v, StringComparer.Ordinal)
                 .ToList();
@@ -379,14 +371,14 @@ public class LoaderService
             if (!File.Exists(installerPath))
             {
                 Log?.Invoke(LocalizationService.F("log.loader.downloading_installer", "Fabric"));
-                await DownloadFile(installerUrl, installerPath);
+                await DownloadFile(installerUrl, installerPath, cancellationToken);
             }
 
             var args = $"-jar \"{installerPath}\" client -dir \"{_minecraftDir}\" -mcversion {mcVersion} -loader {loaderVersion}";
             Log?.Invoke(LocalizationService.F("log.loader.running_installer", "Fabric"));
 
             var process = StartJavaProcess(args, mcVersion);
-            await process.WaitForExitAsync();
+            await process.WaitForExitAsync(cancellationToken);
 
             return process.ExitCode == 0;
         }
@@ -463,13 +455,13 @@ public class LoaderService
             if (!File.Exists(installerPath))
             {
                 Log?.Invoke(LocalizationService.F("log.loader.downloading_installer", "Quilt"));
-                await DownloadFile(installerUrl, installerPath);
+                await DownloadFile(installerUrl, installerPath, cancellationToken);
             }
 
             var args =
                 $"-jar \"{installerPath}\" install client {mcVersion} {loaderVersion} --install-dir=\"{_minecraftDir}\"";
             var process = StartJavaProcess(args, mcVersion);
-            await process.WaitForExitAsync();
+            await process.WaitForExitAsync(cancellationToken);
 
             if (IsLoaderProfileReady(versionId))
             {
@@ -527,7 +519,7 @@ public class LoaderService
         CancellationToken cancellationToken = default)
     {
         if (!string.IsNullOrEmpty(downloadUrl))
-            await DownloadFile(downloadUrl, destJar);
+            await DownloadFile(downloadUrl, destJar, cancellationToken);
 
         var parentJar = Path.Combine(_versionsDir, mcVersion, $"{mcVersion}.jar");
         if (!BuildInstallService.IsValidVersionJar(destJar) && File.Exists(parentJar))
@@ -622,24 +614,26 @@ public class LoaderService
                || line.StartsWith("  Extracting", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task DownloadFile(string url, string path)
+    private async Task DownloadFile(string url, string path, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        using var response = await AppHttp.Client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        using var response = await AppHttp.Client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var total = response.Content.Headers.ContentLength ?? -1;
         var downloaded = 0L;
         var buffer = new byte[8192];
 
-        using var stream = await response.Content.ReadAsStreamAsync();
-        using var fileStream = File.Create(path);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var fileStream = File.Create(path);
 
         while (true)
         {
-            var read = await stream.ReadAsync(buffer);
+            cancellationToken.ThrowIfCancellationRequested();
+            var read = await stream.ReadAsync(buffer, cancellationToken);
             if (read == 0) break;
-            await fileStream.WriteAsync(buffer.AsMemory(0, read));
+            await fileStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             downloaded += read;
 
             if (total > 0)

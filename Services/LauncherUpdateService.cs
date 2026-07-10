@@ -1,10 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,6 +15,7 @@ public sealed class LauncherUpdateInfo
 {
     public Version LatestVersion { get; init; } = new(0, 0);
     public string DownloadUrl { get; init; } = "";
+    public string? ExpectedSha256 { get; init; }
     public string ReleasePageUrl { get; init; } = "";
     public string ReleaseNotes { get; init; } = "";
 }
@@ -43,7 +44,7 @@ public static class LauncherUpdateService
         var url = $"https://api.github.com/repos/{repo}/releases/latest";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("ApeironLauncher/1.0");
+        request.Headers.UserAgent.ParseAdd(AppHttp.UserAgent);
 
         using var response = await AppHttp.Client.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -62,7 +63,7 @@ public static class LauncherUpdateService
         if (!IsNewerVersion(latestVersion, current))
             return null;
 
-        var downloadUrl = FindZipAssetUrl(root);
+        var (downloadUrl, sha256) = FindZipAsset(root);
         if (string.IsNullOrEmpty(downloadUrl))
             return null;
 
@@ -70,6 +71,7 @@ public static class LauncherUpdateService
         {
             LatestVersion = latestVersion,
             DownloadUrl = downloadUrl,
+            ExpectedSha256 = sha256,
             ReleasePageUrl = root.GetProperty("html_url").GetString() ?? "",
             ReleaseNotes = root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : ""
         };
@@ -77,6 +79,7 @@ public static class LauncherUpdateService
 
     public static async Task<string> DownloadUpdatePackageAsync(
         string downloadUrl,
+        string? expectedSha256,
         CancellationToken cancellationToken = default)
     {
         var tempZip = Path.Combine(Path.GetTempPath(), "apeiron-update-" + Guid.NewGuid().ToString("N") + ".zip");
@@ -87,14 +90,16 @@ public static class LauncherUpdateService
         await using var output = File.Create(tempZip);
         await input.CopyToAsync(output, cancellationToken);
 
+        if (!string.IsNullOrWhiteSpace(expectedSha256))
+            VerifySha256(tempZip, expectedSha256);
+
         return tempZip;
     }
 
     public static string ExtractLauncherExecutable(string zipPath)
     {
         var extractDir = Path.Combine(Path.GetTempPath(), "apeiron-update-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(extractDir);
-        ZipFile.ExtractToDirectory(zipPath, extractDir);
+        ZipExtractHelper.ExtractZipFile(zipPath, extractDir);
 
         var exe = Directory.GetFiles(extractDir, "Apeiron.exe", SearchOption.AllDirectories)
             .FirstOrDefault();
@@ -132,6 +137,14 @@ public static class LauncherUpdateService
         });
     }
 
+    public static void VerifySha256(string filePath, string expectedSha256)
+    {
+        using var stream = File.OpenRead(filePath);
+        var hash = Convert.ToHexString(SHA256.HashData(stream));
+        if (!hash.Equals(expectedSha256.Trim(), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Update package failed integrity verification.");
+    }
+
     private static string NormalizeVersion(string text)
     {
         var parts = text.Split('.', StringSplitOptions.RemoveEmptyEntries);
@@ -141,26 +154,75 @@ public static class LauncherUpdateService
         return text;
     }
 
-    private static string? FindZipAssetUrl(JsonElement releaseRoot)
+    private static (string? Url, string? Sha256) FindZipAsset(JsonElement releaseRoot)
     {
         if (!releaseRoot.TryGetProperty("assets", out var assets))
-            return null;
+            return (null, null);
 
-        string? fallback = null;
+        string? zipUrl = null;
+        string? zipName = null;
+        string? sha256 = null;
 
         foreach (var asset in assets.EnumerateArray())
         {
             var name = asset.GetProperty("name").GetString() ?? "";
             var url = asset.GetProperty("browser_download_url").GetString();
-            if (string.IsNullOrEmpty(url) || !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(url))
+                continue;
+
+            if (name.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase))
+            {
+                sha256 ??= TryReadSha256FromAsset(url);
+                continue;
+            }
+
+            if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             if (name.Contains("win-x64", StringComparison.OrdinalIgnoreCase))
-                return url;
+            {
+                zipUrl = url;
+                zipName = name;
+                break;
+            }
 
-            fallback ??= url;
+            zipUrl ??= url;
+            zipName ??= name;
         }
 
-        return fallback;
+        if (zipName != null && string.IsNullOrEmpty(sha256))
+            sha256 = FindMatchingSha256Asset(assets, zipName);
+
+        return (zipUrl, sha256);
+    }
+
+    private static string? FindMatchingSha256Asset(JsonElement assets, string zipName)
+    {
+        var expectedName = zipName + ".sha256";
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = asset.GetProperty("name").GetString() ?? "";
+            if (!name.Equals(expectedName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var url = asset.GetProperty("browser_download_url").GetString();
+            return string.IsNullOrEmpty(url) ? null : TryReadSha256FromAsset(url);
+        }
+
+        return null;
+    }
+
+    private static string? TryReadSha256FromAsset(string url)
+    {
+        try
+        {
+            var text = AppHttp.Client.GetStringAsync(url).GetAwaiter().GetResult().Trim();
+            var token = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+            return string.IsNullOrWhiteSpace(token) ? null : token;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

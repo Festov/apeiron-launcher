@@ -51,9 +51,9 @@ public partial class MainWindow : Window, ILocalizable
         _versionLauncher = new VersionLauncher(_minecraft.MinecraftDir);
         _skinService = new SkinService(_minecraft.MinecraftDir);
         
-        _auth.OnCodeReceived += OnAuthCodeReceived!;
         _auth.OnAuthSuccess += OnAuthSuccess!;
         _auth.OnAuthError += OnAuthError!;
+        _auth.OnSessionExpired += OnSessionExpired!;
         
         _buildInstall.ProgressChanged += (p, t) =>
             Dispatcher.Invoke(() => UpdateDownloadProgress(p, t, lockPlayButton: true));
@@ -115,7 +115,11 @@ public partial class MainWindow : Window, ILocalizable
                 if (!await _auth.EnsureValidSessionAsync())
                 {
                     Dispatcher.Invoke(() =>
-                        AddConsoleLine(LocalizationService.T("main.session_expired_console")));
+                    {
+                        SetProfileState(false);
+                        LogText.Text = LocalizationService.T("main.session_expired_status");
+                        AddConsoleLine(LocalizationService.T("main.session_expired_console"));
+                    });
                 }
             });
         }
@@ -296,7 +300,7 @@ public partial class MainWindow : Window, ILocalizable
                 return;
             }
 
-            var zipPath = await LauncherUpdateService.DownloadUpdatePackageAsync(update.DownloadUrl);
+            var zipPath = await LauncherUpdateService.DownloadUpdatePackageAsync(update.DownloadUrl, update.ExpectedSha256);
             var newExe = LauncherUpdateService.ExtractLauncherExecutable(zipPath);
             LauncherUpdateService.ScheduleApplyUpdate(newExe);
             Application.Current.Shutdown();
@@ -728,6 +732,7 @@ public partial class MainWindow : Window, ILocalizable
     {
         if (_currentBuild == null) return;
 
+        _isDownloading = true;
         PlayButton.IsEnabled = false;
         PlayButton.Content = CreateButtonContent("⏳", "main.reinstalling");
         LogText.Text = LocalizationService.T("main.reinstall_status");
@@ -912,19 +917,6 @@ public partial class MainWindow : Window, ILocalizable
         }
     }
     
-    private void OnAuthCodeReceived(string data)
-    {
-        Dispatcher.Invoke(() =>
-        {
-            var parts = data.Split('|');
-            var code = parts[0];
-            var url = parts[1];
-            LogText.Text = LocalizationService.F("main.auth_code_status", code);
-            AddConsoleLine(LocalizationService.F("main.auth_code_console", code));
-            AddConsoleLine(LocalizationService.F("main.auth_code_url", url));
-        });
-    }
-    
     private void OnAuthSuccess(string username, string uuid)
     {
         Dispatcher.Invoke(() =>
@@ -946,6 +938,17 @@ public partial class MainWindow : Window, ILocalizable
             LogText.Text = LocalizationService.F("main.error_with_message", error);
             AddConsoleLine(LocalizationService.F("main.error_with_message", error));
             AuthButton.IsEnabled = true;
+        });
+    }
+
+    private void OnSessionExpired()
+    {
+        Dispatcher.Invoke(() =>
+        {
+            SetProfileState(false);
+            SetDefaultSkin();
+            LogText.Text = LocalizationService.T("main.session_expired_status");
+            AddConsoleLine(LocalizationService.T("main.session_expired_console"));
         });
     }
     
@@ -1150,7 +1153,7 @@ public partial class MainWindow : Window, ILocalizable
             }
             else
             {
-                identity = GameLaunchService.CreateOfflineIdentity(_settings.OfflineUsername);
+                identity = LaunchCoordinator.ResolveOfflineIdentity(_settings, OfflineNameTextBox.Text);
                 AddConsoleLine(LocalizationService.F("main.launch_offline", ram, _currentBuild.DisplayName));
             }
 

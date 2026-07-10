@@ -39,13 +39,15 @@
     <None Remove="Apeiron.Tests\**" />
     <EmbeddedResource Remove="Apeiron.Tests\**" />
     <Page Remove="Apeiron.Tests\**" />
+    <Compile Remove="scripts\**\*.cs" />
   </ItemGroup>
 
   <Target Name="GenerateLauncherMetadata" BeforeTargets="CoreCompile">
     <PropertyGroup>
       <LauncherMetadataFile>$(IntermediateOutputPath)LauncherMetadata.g.cs</LauncherMetadataFile>
     </PropertyGroup>
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\generate-launcher-metadata.ps1&quot; -Repo &quot;$(GitHubRepository)&quot; -OutputPath &quot;$(LauncherMetadataFile)&quot;" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\generate-launcher-metadata.ps1&quot; -Repo &quot;$(GitHubRepository)&quot; -OutputPath &quot;$(LauncherMetadataFile)&quot;" ContinueOnError="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\scripts\LauncherMetadata.fallback.g.cs" DestinationFiles="$(LauncherMetadataFile)" Condition="!Exists('$(LauncherMetadataFile)')" />
     <ItemGroup>
       <Compile Include="$(LauncherMetadataFile)" />
     </ItemGroup>

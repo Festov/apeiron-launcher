@@ -15,7 +15,7 @@ public class BuildInstallServiceTests
         try
         {
             Directory.CreateDirectory(versionDir);
-            File.WriteAllText(Path.Combine(versionDir, $"{versionId}.json"), "{}");
+            File.WriteAllText(Path.Combine(versionDir, $"{versionId}.json"), """{"mainClass":"net.minecraft.client.main.Main"}""");
 
             var build = new BuildInfo { MinecraftVersion = versionId, IsModded = false };
 
@@ -23,6 +23,9 @@ public class BuildInstallServiceTests
 
             File.WriteAllBytes(Path.Combine(versionDir, $"{versionId}.jar"), new byte[20_000]);
             Assert.True(BuildInstallService.IsInstalled(root, build));
+
+            File.WriteAllText(Path.Combine(versionDir, $"{versionId}.json"), "{}");
+            Assert.False(BuildInstallService.IsInstalled(root, build));
         }
         finally
         {

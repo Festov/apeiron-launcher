@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -38,7 +37,7 @@ public class FabricApiService
             if (json.Count == 0)
             {
                 Log?.Invoke(LocalizationService.T("log.fabric.not_found"));
-                return true;
+                return false;
             }
 
             var version = json[0] as JObject;
@@ -54,21 +53,25 @@ public class FabricApiService
             if (string.IsNullOrEmpty(downloadUrl) || string.IsNullOrEmpty(fileName))
             {
                 Log?.Invoke(LocalizationService.T("log.fabric.url_not_found"));
-                return true;
+                return false;
             }
 
             var dest = Path.Combine(modsDir, fileName);
             await using var stream = await AppHttp.Client.GetStreamAsync(downloadUrl, cancellationToken);
             await using var file = File.Create(dest);
-            await stream.CopyToAsync(file);
+            await stream.CopyToAsync(file, cancellationToken);
 
             Log?.Invoke(LocalizationService.F("log.fabric.installed", fileName));
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             Log?.Invoke(LocalizationService.F("log.fabric.error", ex.Message));
-            return true;
+            return false;
         }
     }
 }
