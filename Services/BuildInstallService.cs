@@ -1,7 +1,9 @@
 using System;
 using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
 
 namespace Apeiron.Services;
 
@@ -28,9 +30,30 @@ public class BuildInstallService
     public static bool IsInstalled(string minecraftDir, BuildInfo build)
     {
         var versionId = build.GetVersionId();
-        var jsonPath = Path.Combine(minecraftDir, "versions", versionId, $"{versionId}.json");
-        var jarPath = Path.Combine(minecraftDir, "versions", versionId, $"{versionId}.jar");
-        return File.Exists(jsonPath) && IsValidVersionJar(jarPath);
+        var versionDir = Path.Combine(minecraftDir, "versions", versionId);
+        var jsonPath = Path.Combine(versionDir, $"{versionId}.json");
+        var jarPath = Path.Combine(versionDir, $"{versionId}.jar");
+
+        if (!File.Exists(jsonPath) || !IsValidVersionJar(jarPath))
+            return false;
+
+        try
+        {
+            var json = File.ReadAllText(jsonPath);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("mainClass", out var mainClass) ||
+                string.IsNullOrWhiteSpace(mainClass.GetString()))
+            {
+                return false;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return true;
     }
 
     public static bool IsValidVersionJar(string jarPath) =>
@@ -62,9 +85,10 @@ public class BuildInstallService
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ProgressChanged?.Invoke(-1, LocalizationService.T("progress.install.fabric_api"));
+                var fabricOk = await _fabricApi.InstallAsync(build, cancellationToken);
+                if (!fabricOk)
+                    return false;
             }
-
-            await _fabricApi.InstallAsync(build, cancellationToken);
         }
 
         ProgressChanged?.Invoke(100, LocalizationService.T("progress.install.ready"));

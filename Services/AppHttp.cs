@@ -2,13 +2,23 @@ using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Security;
+using System.Reflection;
 using System.Security.Authentication;
 
 namespace Apeiron.Services;
 
 public static class AppHttp
 {
+    public static string UserAgent { get; } = CreateUserAgent();
+
     public static HttpClient Client { get; } = CreateClient();
+
+    private static string CreateUserAgent()
+    {
+        var version = Assembly.GetExecutingAssembly().GetName().Version;
+        var label = version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "1.0";
+        return $"Apeiron/{label}";
+    }
 
     private static HttpClient CreateClient()
     {
@@ -31,7 +41,7 @@ public static class AppHttp
         {
             Timeout = TimeSpan.FromMinutes(30)
         };
-        client.DefaultRequestHeaders.Add("User-Agent", "Apeiron/1.2");
+        client.DefaultRequestHeaders.Add("User-Agent", UserAgent);
         return client;
     }
 }

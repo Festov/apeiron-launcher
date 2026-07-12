@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.SharpZipLib.Zip;
 using Newtonsoft.Json.Linq;
@@ -53,7 +54,8 @@ public class VersionLauncher
             Directory.CreateDirectory(gameDir);
 
             var merged = await LoadMergedVersionAsync(versionId);
-            await EnsureLibrariesAsync(merged);
+            if (!HasRequiredLibraries(merged))
+                await EnsureLibrariesAsync(merged);
 
             var nativesDir = Path.Combine(gameDir, "natives");
             if (Directory.Exists(nativesDir))
@@ -175,8 +177,9 @@ public class VersionLauncher
 
             if (javaMajor >= 9)
             {
-                var argFile = WriteLaunchArgFile(gameDir, processArgs);
+                var argFile = WriteLaunchArgFile(processArgs);
                 process.StartInfo.ArgumentList.Add("@" + argFile);
+                ScheduleDeleteLaunchArgFile(argFile);
             }
             else
             {
@@ -291,10 +294,18 @@ public class VersionLauncher
             await LibraryHelper.DownloadFromVersionLibraryAsync(
                 lib,
                 _librariesDir,
-                async (url, path, _, _) =>
+                async (url, path, sha1, ct) =>
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                    await DownloadFileAsync(url, path);
+                    await DownloadFileAsync(url, path, ct);
+                    if (!LibraryHelper.VerifySha1(path, sha1))
+                    {
+                        if (File.Exists(path))
+                            File.Delete(path);
+                        await DownloadFileAsync(url, path, ct);
+                        if (!LibraryHelper.VerifySha1(path, sha1))
+                            throw new IOException(LocalizationService.F("log.launch.library_verify_failed", Path.GetFileName(path)));
+                    }
                 });
 
             var name = lib?["name"]?.ToString();
@@ -308,15 +319,42 @@ public class VersionLauncher
                 if (!string.IsNullOrEmpty(nativeKey) && classifiers?[nativeKey] != null)
                 {
                     var nativeUrl = classifiers[nativeKey]?["url"]?.ToString();
+                    var nativeSha1 = classifiers[nativeKey]?["sha1"]?.ToString();
                     var nativePath = GetNativeLibraryPath(name, nativeKey);
                     if (!string.IsNullOrEmpty(nativeUrl) && !File.Exists(nativePath))
                     {
                         Directory.CreateDirectory(Path.GetDirectoryName(nativePath)!);
                         await DownloadFileAsync(nativeUrl, nativePath);
+                        if (!LibraryHelper.VerifySha1(nativePath, nativeSha1))
+                            throw new IOException(LocalizationService.F("log.launch.library_verify_failed", Path.GetFileName(nativePath)));
                     }
                 }
             }
         }
+    }
+
+    private bool HasRequiredLibraries(JObject versionData)
+    {
+        var libraries = versionData["libraries"] as JArray;
+        if (libraries == null)
+            return true;
+
+        foreach (var lib in libraries)
+        {
+            if (!ShouldIncludeLibrary(lib as JObject))
+                continue;
+
+            var name = lib?["name"]?.ToString();
+            if (string.IsNullOrEmpty(name))
+                continue;
+
+            var path = LibraryHelper.GetJarPath(name, _librariesDir);
+            var sha1 = lib?["downloads"]?["artifact"]?["sha1"]?.ToString();
+            if (!File.Exists(path) || !LibraryHelper.VerifySha1(path, sha1))
+                return false;
+        }
+
+        return true;
     }
 
     private string BuildClasspath(JObject versionData, string versionId, string nativesDir)
@@ -652,18 +690,18 @@ public class VersionLauncher
         return $"{uuid[..8]}-{uuid[8..12]}-{uuid[12..16]}-{uuid[16..20]}-{uuid[20..]}";
     }
 
-    private async Task DownloadFileAsync(string url, string path)
+    private static async Task DownloadFileAsync(string url, string path, CancellationToken cancellationToken = default)
     {
-        using var response = await AppHttp.Client.GetAsync(url);
+        using var response = await AppHttp.Client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var file = File.Create(path);
-        await stream.CopyToAsync(file);
+        await stream.CopyToAsync(file, cancellationToken);
     }
 
-    private static string WriteLaunchArgFile(string gameDir, IReadOnlyList<string> args)
+    private static string WriteLaunchArgFile(IReadOnlyList<string> args)
     {
-        var argFilePath = Path.Combine(gameDir, "apeiron-launch.args");
+        var argFilePath = Path.Combine(Path.GetTempPath(), "apeiron-launch-" + Guid.NewGuid().ToString("N") + ".args");
         var lines = new List<string>(args.Count);
 
         foreach (var arg in args)
@@ -674,6 +712,15 @@ public class VersionLauncher
 
         File.WriteAllText(argFilePath, string.Join(Environment.NewLine, lines), new UTF8Encoding(false));
         return argFilePath;
+    }
+
+    private static void ScheduleDeleteLaunchArgFile(string path)
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromMinutes(2));
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        });
     }
 
     private static string FormatArgFileValue(string arg)

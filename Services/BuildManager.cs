@@ -1,8 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Apeiron.Services;
 
@@ -22,31 +22,45 @@ public class BuildManager
 
     public List<BuildInfo> LoadBuilds()
     {
+        if (!File.Exists(_configPath))
+            return new List<BuildInfo>();
+
         try
         {
-            if (File.Exists(_configPath))
+            var json = File.ReadAllText(_configPath);
+            _builds = JsonSerializer.Deserialize<List<BuildInfo>>(json) ?? new List<BuildInfo>();
+            var migrated = false;
+
+            foreach (var build in _builds)
             {
-                var json = File.ReadAllText(_configPath);
-                _builds = JsonSerializer.Deserialize<List<BuildInfo>>(json) ?? new List<BuildInfo>();
-                var migrated = false;
-
-                foreach (var build in _builds)
-                {
-                    if (MigrateBuild(build))
-                        migrated = true;
-                }
-
-                if (migrated)
-                    SaveBuilds(_builds);
-
-                return _builds;
+                if (MigrateBuild(build))
+                    migrated = true;
             }
+
+            if (migrated)
+                SaveBuilds(_builds);
+
+            return _builds;
+        }
+        catch (Exception ex)
+        {
+            BackupCorruptConfig();
+            throw new InvalidOperationException(LocalizationService.F("log.builds.corrupt", ex.Message), ex);
+        }
+    }
+
+    private void BackupCorruptConfig()
+    {
+        try
+        {
+            var backupPath = _configPath + ".corrupt." + DateTime.Now.ToString("yyyyMMddHHmmss") + ".bak";
+            File.Copy(_configPath, backupPath, overwrite: true);
+            Console.WriteLine(LocalizationService.F("log.builds.corrupt_backup", backupPath));
         }
         catch (Exception ex)
         {
             Console.WriteLine(LocalizationService.F("log.builds.load_error", ex.Message));
         }
-        return new List<BuildInfo>();
     }
 
     private bool MigrateBuild(BuildInfo build)

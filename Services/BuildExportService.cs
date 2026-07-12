@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using ICSharpCode.SharpZipLib.Zip;
 
@@ -98,21 +99,7 @@ public static class BuildExportService
     private static string ExtractZip(string zipPath)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "apeiron-import-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-
-        using var zip = new ZipFile(zipPath);
-        foreach (ZipEntry entry in zip)
-        {
-            if (!entry.IsFile)
-                continue;
-
-            var dest = Path.Combine(tempDir, entry.Name);
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            using var input = zip.GetInputStream(entry);
-            using var output = File.Create(dest);
-            input.CopyTo(output);
-        }
-
+        ZipExtractHelper.ExtractZipFile(zipPath, tempDir);
         return tempDir;
     }
 

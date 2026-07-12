@@ -18,9 +18,9 @@ public class AuthService
     private string? _uuid;
     private readonly string _authFile;
     
-    public event Action<string>? OnCodeReceived;
     public event Action<string, string>? OnAuthSuccess;
     public event Action<string>? OnAuthError;
+    public event Action? OnSessionExpired;
     
     public AuthService()
     {
@@ -88,143 +88,6 @@ public class AuthService
         }
     }
     
-    public async Task<bool> StartDeviceCodeFlow()
-    {
-        try
-        {
-            var content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["client_id"] = ClientId,
-                ["scope"] = "XboxLive.signin offline_access",
-                ["response_type"] = "device_code"
-            });
-            
-            content.Headers.Clear();
-            content.Headers.Add("Content-Type", "application/x-www-form-urlencoded");
-            
-            var deviceResponse = await Http.PostAsync(
-                "https://login.live.com/oauth20_authorize.srf",
-                content
-            );
-            
-            var responseText = await deviceResponse.Content.ReadAsStringAsync();
-            
-            if (responseText.TrimStart().StartsWith("<"))
-            {
-                OnAuthError?.Invoke(LocalizationService.T("auth.server_html"));
-                return false;
-            }
-            
-            if (!deviceResponse.IsSuccessStatusCode)
-            {
-                OnAuthError?.Invoke(LocalizationService.F("auth.error_status", deviceResponse.StatusCode));
-                return false;
-            }
-            
-            var deviceData = JObject.Parse(responseText);
-            
-            var deviceCode = deviceData["device_code"]?.ToString();
-            var userCode = deviceData["user_code"]?.ToString();
-            var verificationUri = deviceData["verification_uri"]?.ToString();
-            var interval = deviceData["interval"]?.Value<int>() ?? 5;
-            var expiresIn = deviceData["expires_in"]?.Value<int>() ?? 900;
-            
-            if (string.IsNullOrEmpty(deviceCode) || string.IsNullOrEmpty(userCode))
-            {
-                OnAuthError?.Invoke(LocalizationService.T("auth.no_auth_code"));
-                return false;
-            }
-            
-            OnCodeReceived?.Invoke($"{userCode}|{verificationUri}");
-            
-            try
-            {
-                var psi = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = verificationUri,
-                    UseShellExecute = true
-                };
-                System.Diagnostics.Process.Start(psi);
-            }
-            catch { }
-            
-            var startTime = DateTime.UtcNow;
-            
-            while ((DateTime.UtcNow - startTime).TotalSeconds < expiresIn)
-            {
-                await Task.Delay(interval * 1000);
-                
-                var tokenContent = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["client_id"] = ClientId,
-                    ["device_code"] = deviceCode,
-                    ["grant_type"] = "urn:ietf:params:oauth:grant-type:device_code"
-                });
-                
-                tokenContent.Headers.Clear();
-                tokenContent.Headers.Add("Content-Type", "application/x-www-form-urlencoded");
-                
-                var tokenResponse = await Http.PostAsync(
-                    "https://login.live.com/oauth20_token.srf",
-                    tokenContent
-                );
-                
-                var tokenResponseText = await tokenResponse.Content.ReadAsStringAsync();
-                
-                if (tokenResponse.IsSuccessStatusCode)
-                {
-                    var tokenData = JObject.Parse(tokenResponseText);
-                    var accessToken = tokenData["access_token"]?.ToString();
-                    var refreshToken = tokenData["refresh_token"]?.ToString();
-                    
-                    if (string.IsNullOrEmpty(accessToken))
-                    {
-                        OnAuthError?.Invoke(LocalizationService.T("auth.no_token"));
-                        return false;
-                    }
-                    
-                    _refreshToken = refreshToken;
-                    return await ExchangeTokens(accessToken);
-                }
-                else
-                {
-                    try
-                    {
-                        var errorData = JObject.Parse(tokenResponseText);
-                        var error = errorData["error"]?.ToString();
-                        
-                        if (error == "authorization_pending") continue;
-                        if (error == "authorization_declined")
-                        {
-                            OnAuthError?.Invoke(LocalizationService.T("auth.cancelled"));
-                            return false;
-                        }
-                        if (error == "expired_token")
-                        {
-                            OnAuthError?.Invoke(LocalizationService.T("auth.timeout"));
-                            return false;
-                        }
-                        
-                        OnAuthError?.Invoke(LocalizationService.F("auth.error_description", errorData["error_description"]?.ToString() ?? error ?? ""));
-                        return false;
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
-            }
-            
-            OnAuthError?.Invoke(LocalizationService.T("auth.timeout"));
-            return false;
-        }
-        catch (Exception ex)
-        {
-            OnAuthError?.Invoke(LocalizationService.F("auth.error_status", ex.Message));
-            return false;
-        }
-    }
-    
     public async Task<bool> ExchangeCode(string? code)
     {
         if (string.IsNullOrEmpty(code))
@@ -288,13 +151,43 @@ public class AuthService
             return true;
 
         if (string.IsNullOrEmpty(_refreshToken))
+        {
+            InvalidateSession();
             return false;
+        }
 
         var liveToken = await RefreshMicrosoftTokenAsync();
         if (string.IsNullOrEmpty(liveToken))
+        {
+            InvalidateSession();
             return false;
+        }
 
-        return await ExchangeTokens(liveToken);
+        var exchanged = await ExchangeTokens(liveToken);
+        if (!exchanged)
+            InvalidateSession();
+
+        return exchanged;
+    }
+
+    public void InvalidateSession()
+    {
+        _accessToken = null;
+        _refreshToken = null;
+        _username = null;
+        _uuid = null;
+
+        try
+        {
+            if (File.Exists(_authFile))
+                File.Delete(_authFile);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(LocalizationService.F("auth.token_save_error", ex.Message));
+        }
+
+        OnSessionExpired?.Invoke();
     }
 
     private async Task<bool> ValidateMinecraftTokenAsync()

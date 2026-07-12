@@ -11,7 +11,7 @@ public partial class AuthWindow : Window, ILocalizable
 {
     private readonly MainWindow _mainWindow;
     private readonly AuthService _auth;
-    private bool _isProcessing = false;
+    private bool _isProcessing;
 
     public AuthWindow(MainWindow mainWindow, AuthService auth)
     {
@@ -34,7 +34,9 @@ public partial class AuthWindow : Window, ILocalizable
     public void ApplyLocalization()
     {
         Title = LocalizationService.T("auth.title");
-        AuthHeadingText.Text = LocalizationService.T("auth.heading");
+        AuthHeadingText.Text = _isProcessing
+            ? LocalizationService.T("auth.processing")
+            : LocalizationService.T("auth.heading");
         AuthSubtitleText.Text = LocalizationService.T("auth.subtitle");
     }
     
@@ -46,7 +48,7 @@ public partial class AuthWindow : Window, ILocalizable
             AuthWebView.CoreWebView2.Settings.IsScriptEnabled = true;
             AuthWebView.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = true;
             
-            AuthWebView.CoreWebView2.NavigationStarting += (sender, args) =>
+            AuthWebView.CoreWebView2.NavigationStarting += (_, args) =>
             {
                 if (_isProcessing) return;
                 
@@ -58,18 +60,8 @@ public partial class AuthWindow : Window, ILocalizable
                 {
                     _isProcessing = true;
                     var code = System.Web.HttpUtility.ParseQueryString(uri.Query).Get("code");
-                    
-                    Dispatcher.Invoke(() =>
-                    {
-                        Close();
-                    });
-                    
-                    _ = Task.Run(async () =>
-                    {
-                        await _auth.ExchangeCode(code);
-                    });
-                    
                     args.Cancel = true;
+                    _ = CompleteAuthAsync(code);
                 }
             };
             
@@ -87,10 +79,44 @@ public partial class AuthWindow : Window, ILocalizable
             MessageBox.Show(LocalizationService.F("auth.init_error", ex.Message), LocalizationService.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    private async Task CompleteAuthAsync(string? code)
+    {
+        try
+        {
+            Dispatcher.Invoke(ApplyLocalization);
+
+            var success = await _auth.ExchangeCode(code);
+            Dispatcher.Invoke(() =>
+            {
+                if (success)
+                    Close();
+                else
+                {
+                    _isProcessing = false;
+                    ApplyLocalization();
+                    AuthWebView.CoreWebView2?.Reload();
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                _isProcessing = false;
+                ApplyLocalization();
+                MessageBox.Show(
+                    LocalizationService.F("auth.error_status", ex.Message),
+                    LocalizationService.T("common.error"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            });
+        }
+    }
     
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape)
+        if (e.Key == Key.Escape && !_isProcessing)
         {
             Close();
         }

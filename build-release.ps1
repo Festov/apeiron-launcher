@@ -72,6 +72,10 @@ if (Test-Path $zipPath) {
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory($publishDir, $zipPath)
 
+$sha256 = (Get-FileHash $zipPath -Algorithm SHA256).Hash
+$shaPath = "$zipPath.sha256"
+Set-Content -Path $shaPath -Value "$sha256  $zipName" -Encoding ASCII -NoNewline
+
 $sizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 $zipMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
 
@@ -79,3 +83,4 @@ Write-Host ""
 Write-Host "Apeiron $version"
 Write-Host "  EXE: $exe ($sizeMb MB)"
 Write-Host "  ZIP: $zipPath ($zipMb MB)"
+Write-Host "  SHA256: $shaPath"
