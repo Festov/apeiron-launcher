@@ -94,6 +94,8 @@ dotnet test Apeiron.Tests/Apeiron.Tests.csproj -c Release
 
 Checklists: [TESTING.md](TESTING.md)
 
+Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+
 ## Settings
 
 - **RAM** — global default (capped to ~75% of system memory)

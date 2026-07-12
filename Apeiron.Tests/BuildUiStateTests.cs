@@ -39,4 +39,12 @@ public class BuildUiStateTests
         Assert.Equal(icon, content.Icon);
         Assert.Equal(key, content.LocalizationKey);
     }
+
+    [Fact]
+    public void GetPlayButtonPresentation_marks_null_build_disabled()
+    {
+        var presentation = BuildUiState.GetPlayButtonPresentation(null, "C:\\test");
+        Assert.False(presentation.IsEnabled);
+        Assert.Equal("main.no_builds_short", presentation.LocalizationKey);
+    }
 }
