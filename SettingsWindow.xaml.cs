@@ -129,9 +129,8 @@ public partial class SettingsWindow : Window, ILocalizable
                 return;
             }
 
-            var message = LocalizationService.F(
-                "settings.update_available",
-                update.LatestVersion,
+            var message = LauncherUpdatePromptHelper.BuildPrompt(
+                update,
                 LauncherUpdateService.GetCurrentVersion());
 
             if (MessageBox.Show(

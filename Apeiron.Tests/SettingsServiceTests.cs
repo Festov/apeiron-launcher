@@ -29,6 +29,7 @@ public class SettingsServiceTests
                 OfflineOnly = true,
                 CheckForUpdates = false
             };
+            settings.RecentMcVersions = new List<string> { "1.21", "1.20.1" };
             settings.Save();
 
             var loaded = new SettingsService(root);
@@ -41,6 +42,7 @@ public class SettingsServiceTests
             Assert.Equal("ru", loaded.Language);
             Assert.True(loaded.OfflineOnly);
             Assert.False(loaded.CheckForUpdates);
+            Assert.Equal(new[] { "1.21", "1.20.1" }, loaded.RecentMcVersions);
         }
         finally
         {

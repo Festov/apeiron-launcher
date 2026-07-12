@@ -98,13 +98,10 @@
                                             Background="{DynamicResource BorderBrush}"
                                             BorderBrush="{DynamicResource BorderBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="8"
+                                            CornerRadius="0"
                                             VerticalAlignment="Center"
                                             HorizontalAlignment="Left"
                                             SnapsToDevicePixels="True">
-                                        <Border.Clip>
-                                            <RectangleGeometry RadiusX="8" RadiusY="8" Rect="0,0,52,52"/>
-                                        </Border.Clip>
                                         <Image x:Name="SkinImage" Stretch="UniformToFill"/>
                                     </Border>
 

@@ -29,18 +29,20 @@ public partial class AddBuildWindow : Window, ILocalizable
         public override string ToString() => Display;
     }
 
-    public BuildInfo? CreatedBuild { get; private set; }
+    private readonly SettingsService _settings;
     private readonly LoaderService _loaderService;
+    public BuildInfo? CreatedBuild { get; private set; }
     private List<VersionEntry> _allVersions = new();
     private bool _isLoadingVersions;
     private string _versionSearchQuery = "";
     private CancellationTokenSource? _loaderVersionsCts;
     private int _loaderVersionsRequestId;
 
-    public AddBuildWindow()
+    public AddBuildWindow(SettingsService settings)
     {
         InitializeComponent();
         Owner = Application.Current.MainWindow;
+        _settings = settings;
         _loaderService = new LoaderService(
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".minecraft"));
 
@@ -198,6 +200,24 @@ public partial class AddBuildWindow : Window, ILocalizable
                 Display = entry.IsStable ? entry.Id : $"{entry.Id} · {GetTypeLabel(entry.Type)}"
             })
             .ToList();
+
+        if (string.IsNullOrEmpty(_versionSearchQuery) && _settings.RecentMcVersions.Count > 0)
+        {
+            var orderedIds = RecentMcVersionsHelper.OrderWithRecentFirst(
+                filtered.Select(item => item.Id),
+                _settings.RecentMcVersions);
+
+            filtered = orderedIds
+                .Select(id =>
+                {
+                    var item = filtered.First(v => v.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+                    var isRecent = _settings.RecentMcVersions.Any(v => v.Equals(id, StringComparison.OrdinalIgnoreCase));
+                    return isRecent
+                        ? new VersionListItem { Id = item.Id, Display = $"★ {item.Display}" }
+                        : item;
+                })
+                .ToList();
+        }
 
         if (filtered.Count == 0)
         {
@@ -396,6 +416,9 @@ public partial class AddBuildWindow : Window, ILocalizable
             IsModded = isModded,
             InstallFabricApi = isModded && loader.Equals("Fabric", StringComparison.OrdinalIgnoreCase)
         };
+
+        RecentMcVersionsHelper.Record(_settings.RecentMcVersions, version);
+        _settings.Save();
 
         DialogResult = true;
         Close();

@@ -293,9 +293,8 @@ public partial class MainWindow : Window, ILocalizable
             if (update == null)
                 return;
 
-            var message = LocalizationService.F(
-                "settings.update_available",
-                update.LatestVersion,
+            var message = LauncherUpdatePromptHelper.BuildPrompt(
+                update,
                 LauncherUpdateService.GetCurrentVersion());
 
             if (MessageBox.Show(
@@ -689,7 +688,7 @@ public partial class MainWindow : Window, ILocalizable
     {
         try
         {
-            var addBuildWindow = new AddBuildWindow();
+            var addBuildWindow = new AddBuildWindow(_settings);
             addBuildWindow.Owner = this;
             
             if (addBuildWindow.ShowDialog() == true && addBuildWindow.CreatedBuild != null)
