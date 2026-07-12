@@ -73,6 +73,7 @@ public partial class EditBuildWindow : Window, ILocalizable
         AddModButton.Content = LocalizationService.T("edit_build.add_mod");
         OpenModsFolderButton.Content = LocalizationService.T("edit_build.open_mods_folder");
         RefreshModsButton.Content = LocalizationService.T("edit_build.refresh_mods");
+        ModSearchTextBox.ToolTip = LocalizationService.T("edit_build.mod_search_tooltip");
         NoModsText.Text = LocalizationService.T("edit_build.no_mods");
         LaunchLabel.Text = LocalizationService.T("edit_build.launch");
         DefaultBuildCheckBox.Content = LocalizationService.T("edit_build.default_build");
@@ -107,10 +108,21 @@ public partial class EditBuildWindow : Window, ILocalizable
     private void LoadMods()
     {
         _mods = ModManager.ListMods(_build.GetModsDir());
-        ModsList.ItemsSource = null;
-        ModsList.ItemsSource = _mods;
-        NoModsText.Visibility = _mods.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ApplyModFilter();
     }
+
+    private void ApplyModFilter()
+    {
+        var filtered = ModListFilter.Filter(_mods, ModSearchTextBox.Text);
+        ModsList.ItemsSource = null;
+        ModsList.ItemsSource = filtered;
+        NoModsText.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        NoModsText.Text = _mods.Count == 0
+            ? LocalizationService.T("edit_build.no_mods")
+            : LocalizationService.T("edit_build.no_mods_match");
+    }
+
+    private void ModSearchTextBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyModFilter();
 
     private void ModCheckBox_Changed(object sender, RoutedEventArgs e) { }
 

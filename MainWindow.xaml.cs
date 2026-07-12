@@ -26,6 +26,7 @@ public partial class MainWindow : Window, ILocalizable
     private readonly BuildInstallService _buildInstall;
     private readonly VersionLauncher _versionLauncher;
     private readonly PlayOrchestrator _playOrchestrator;
+    private readonly LauncherOrchestrator _launcherOrchestrator;
     private readonly SkinService _skinService;
     private readonly ThemeService _themeService = new();
     private readonly List<string> _mcOutputLines = new();
@@ -53,6 +54,7 @@ public partial class MainWindow : Window, ILocalizable
         _buildInstall = new BuildInstallService(_minecraft, _loader);
         _versionLauncher = new VersionLauncher(_minecraft.MinecraftDir);
         _playOrchestrator = new PlayOrchestrator(_minecraft, _buildInstall, _versionLauncher, _java);
+        _launcherOrchestrator = new LauncherOrchestrator(_playOrchestrator, _minecraft);
         _skinService = new SkinService(_minecraft.MinecraftDir);
         
         _auth.OnAuthSuccess += OnAuthSuccess!;
@@ -584,20 +586,13 @@ public partial class MainWindow : Window, ILocalizable
     {
         if (_currentBuild == null) return;
 
-        var installed = BuildInstallService.IsInstalled(_minecraft.MinecraftDir, _currentBuild);
-
-        if (installed)
-        {
-            PlayButton.IsEnabled = true;
-            SetPlayButton("▶", "main.play");
-            LogText.Text = LocalizationService.F("main.build_ready", _currentBuild.DisplayName);
-        }
-        else
-        {
-            PlayButton.IsEnabled = true;
-            SetPlayButton("⬇️", "main.download");
-            LogText.Text = LocalizationService.F("main.build_download_hint", _currentBuild.DisplayName);
-        }
+        PlayButton.IsEnabled = true;
+        var mode = BuildUiState.GetPlayButtonMode(_currentBuild, _minecraft.MinecraftDir);
+        var (icon, key) = BuildUiState.GetPlayButtonContent(mode);
+        SetPlayButton(icon, key);
+        LogText.Text = mode == PlayButtonMode.Play
+            ? LocalizationService.F("main.build_ready", _currentBuild.DisplayName)
+            : LocalizationService.F("main.build_download_hint", _currentBuild.DisplayName);
     }
 
     private void ImportModpack_Click(object sender, RoutedEventArgs e)
@@ -812,7 +807,7 @@ public partial class MainWindow : Window, ILocalizable
 
         try
         {
-            var removed = BuildInstallService.ClearInstalledArtifacts(_minecraft.MinecraftDir, _currentBuild);
+            var removed = _launcherOrchestrator.ClearForReinstall(_currentBuild);
             foreach (var id in removed)
                 AddConsoleLine(LocalizationService.F(
                     id == _currentBuild.GetVersionId() ? "main.profile_deleted" : "main.base_deleted",
@@ -820,11 +815,11 @@ public partial class MainWindow : Window, ILocalizable
 
             PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
             var cancellationToken = BeginDownloadUi();
-            var success = await _buildInstall.InstallAsync(_currentBuild, cancellationToken);
-            var wasCancelled = cancellationToken.IsCancellationRequested;
+            var installResult = await _launcherOrchestrator.ReinstallAsync(_currentBuild, cancellationToken);
+            var wasCancelled = installResult == InstallFlowResult.Cancelled;
             EndDownloadUi();
 
-            if (success)
+            if (installResult is InstallFlowResult.Success or InstallFlowResult.AlreadyInstalled)
             {
                 PlayButton.IsEnabled = true;
                 PlayButton.Content = CreateButtonContent("▶", "main.play");
@@ -1120,7 +1115,8 @@ public partial class MainWindow : Window, ILocalizable
 
         try
         {
-            if (_currentBuild == null)
+            var validation = _launcherOrchestrator.ValidateBuild(_currentBuild);
+            if (validation == PlayValidationResult.NoBuild)
             {
                 MessageBox.Show(LocalizationService.T("main.select_build_launch"), LocalizationService.T("main.launch_title"), MessageBoxButton.OK, MessageBoxImage.Information);
                 LogText.Text = LocalizationService.T("main.no_build_selected_log");
@@ -1128,10 +1124,10 @@ public partial class MainWindow : Window, ILocalizable
                 return;
             }
 
-            if (!_currentBuild.IsLoaderSupported())
+            if (validation == PlayValidationResult.UnsupportedLoader)
             {
                 MessageBox.Show(
-                    LocalizationService.F("main.loader_unsupported", _currentBuild.Loader),
+                    LocalizationService.F("main.loader_unsupported", _currentBuild!.Loader),
                     LocalizationService.T("main.launch_title"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -1145,17 +1141,17 @@ public partial class MainWindow : Window, ILocalizable
                 return;
             }
 
-            if (!await EnsureJavaForBuildAsync(_currentBuild))
+            if (!await EnsureJavaForBuildAsync(_currentBuild!))
             {
                 RestorePlayButton();
                 return;
             }
 
-            if (!_playOrchestrator.IsInstalled(_currentBuild))
+            if (!_launcherOrchestrator.IsInstalled(_currentBuild!))
             {
                 PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
                 var cancellationToken = BeginDownloadUi();
-                var installResult = await _playOrchestrator.InstallIfNeededAsync(_currentBuild, cancellationToken);
+                var installResult = await _launcherOrchestrator.InstallIfNeededAsync(_currentBuild!, cancellationToken);
                 var wasCancelled = installResult == InstallFlowResult.Cancelled;
                 EndDownloadUi();
                 if (installResult is InstallFlowResult.Failed or InstallFlowResult.Cancelled)
@@ -1164,7 +1160,7 @@ public partial class MainWindow : Window, ILocalizable
                         ? LocalizationService.T("main.download_cancelled")
                         : LocalizationService.T("main.install_failed_short");
                     if (!wasCancelled)
-                        HandleInstallFailure(_currentBuild, wasCancelled);
+                        HandleInstallFailure(_currentBuild!, wasCancelled);
                     PlayButton.IsEnabled = true;
                     PlayButton.Content = CreateButtonContent("⬇️", "main.download");
                     _isDownloading = false;
@@ -1174,7 +1170,13 @@ public partial class MainWindow : Window, ILocalizable
 
             PlayButton.Content = CreateButtonContent("⏳", "main.launching");
 
-            if (string.IsNullOrEmpty(_playOrchestrator.ResolveJavaPath(_currentBuild)))
+            var preparation = await _launcherOrchestrator.PrepareLaunchAsync(
+                _currentBuild!,
+                _auth,
+                _settings,
+                OfflineNameTextBox.Text);
+
+            if (preparation.Result == LaunchPreparationResult.JavaMissing)
             {
                 MessageBox.Show(
                     LocalizationService.T("main.java_not_found_launch"),
@@ -1185,8 +1187,7 @@ public partial class MainWindow : Window, ILocalizable
                 return;
             }
 
-            var resolution = await LaunchCoordinator.ResolveLaunchIdentityAsync(_auth, _settings, OfflineNameTextBox.Text);
-            if (resolution.Status == LaunchIdentityStatus.SessionExpired)
+            if (preparation.Result == LaunchPreparationResult.SessionExpired)
             {
                 MessageBox.Show(
                     LocalizationService.T("main.session_expired"),
@@ -1199,15 +1200,15 @@ public partial class MainWindow : Window, ILocalizable
                 return;
             }
 
-            var identity = resolution.Identity;
-            var ram = _currentBuild.ResolveRamGb(_settings.Ram);
+            var identity = preparation.Identity;
+            var ram = _currentBuild!.ResolveRamGb(_settings.Ram);
             if (identity.IsOffline)
                 AddConsoleLine(LocalizationService.F("main.launch_offline", ram, _currentBuild.DisplayName));
             else
                 AddConsoleLine(LocalizationService.F("main.launch_online", identity.Username, ram, _currentBuild.DisplayName));
 
             _mcOutputLines.Clear();
-            _gameProcess = await _playOrchestrator.LaunchGameAsync(_currentBuild, identity, _settings.Ram);
+            _gameProcess = await _launcherOrchestrator.LaunchGameAsync(_currentBuild!, identity, _settings.Ram);
 
             if (_gameProcess != null)
             {
@@ -1259,9 +1260,9 @@ public partial class MainWindow : Window, ILocalizable
     {
         EndDownloadUi();
         PlayButton.IsEnabled = true;
-        PlayButton.Content = _currentBuild != null && BuildInstallService.IsInstalled(_minecraft.MinecraftDir, _currentBuild)
-            ? CreateButtonContent("▶", "main.play")
-            : CreateButtonContent("⬇️", "main.download");
+        var (icon, key) = BuildUiState.GetPlayButtonContent(
+            BuildUiState.GetPlayButtonMode(_currentBuild, _minecraft.MinecraftDir));
+        PlayButton.Content = CreateButtonContent(icon, key);
         _isDownloading = false;
     }
 
