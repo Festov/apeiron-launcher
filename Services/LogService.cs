@@ -39,6 +39,8 @@ public class LogService
             {
                 File.AppendAllText(_sessionFile, line + Environment.NewLine, Encoding.UTF8);
             }
+
+            StructuredLogWriter.Append(_logsDir, "launcher.log", message);
         }
         catch { }
     }
@@ -87,6 +89,10 @@ public class LogService
             var content = header + string.Join(Environment.NewLine, lines);
             File.WriteAllText(path, content, Encoding.UTF8);
             WriteLine(LocalizationService.F(logKey, Path.GetFileName(path)));
+            StructuredLogWriter.Append(_logsDir, prefix + ".saved", buildName, new Dictionary<string, object?>
+            {
+                ["path"] = Path.GetFileName(path)
+            });
             return path;
         }
         catch

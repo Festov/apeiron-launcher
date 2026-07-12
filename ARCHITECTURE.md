@@ -29,6 +29,7 @@ flowchart TB
     end
 
     MW --> VM
+    VM -->|bindings| MW
     MW --> LO
     LO --> PO
     LO --> LC
@@ -68,6 +69,7 @@ Apeiron.exe
 
 | Area | Entry point |
 |------|-------------|
+| UI state | `MainViewModel` — status, play button, download progress bindings |
 | New mod loader | `LoaderService.InstallLoader` switch |
 | CLI | `LaunchArgsParser` → `MainWindow` quick launch |
 | Modpack import | `ModpackImportService` / drag-drop on `MainWindow` |
@@ -75,7 +77,7 @@ Apeiron.exe
 
 ## Tests
 
-Unit tests live in `Apeiron.Tests/` (169+). Run:
+Unit tests live in `Apeiron.Tests/` (178+). Run:
 
 ```bash
 dotnet test Apeiron.Tests/Apeiron.Tests.csproj -c Release

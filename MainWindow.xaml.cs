@@ -43,6 +43,7 @@ public partial class MainWindow : Window, ILocalizable
     public MainWindow(SettingsService settings, string? launchTarget = null)
     {
         InitializeComponent();
+        DataContext = _viewModel;
 
         _settings = settings;
         _pendingLaunchTarget = launchTarget;
@@ -68,7 +69,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             Dispatcher.Invoke(() =>
             {
-                LogText.Text = msg;
+                _viewModel.SetStatus(msg);
                 AddConsoleLine(msg);
             });
         };
@@ -79,7 +80,7 @@ public partial class MainWindow : Window, ILocalizable
             {
                 if (msg.StartsWith("[MC]"))
                     _mcOutputLines.Add(msg);
-                LogText.Text = msg;
+                _viewModel.SetStatus(msg);
                 AddConsoleLine(msg);
             });
         };
@@ -91,7 +92,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             Dispatcher.Invoke(() =>
             {
-                LogText.Text = msg;
+                _viewModel.SetStatus(msg);
                 AddConsoleLine(msg);
             });
         };
@@ -100,7 +101,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             Dispatcher.Invoke(() =>
             {
-                LogText.Text = msg;
+                _viewModel.SetStatus(msg);
                 AddConsoleLine(msg);
             });
         };
@@ -123,7 +124,7 @@ public partial class MainWindow : Window, ILocalizable
                     Dispatcher.Invoke(() =>
                     {
                         SetProfileState(false);
-                        LogText.Text = LocalizationService.T("main.session_expired_status");
+                        _viewModel.SetStatus(LocalizationService.T("main.session_expired_status"));
                         AddConsoleLine(LocalizationService.T("main.session_expired_console"));
                     });
                 }
@@ -171,19 +172,15 @@ public partial class MainWindow : Window, ILocalizable
 
     private async Task<bool> InstallJavaQuietlyAsync(string mcVersion)
     {
-        DownloadProgress.Visibility = Visibility.Visible;
-        ProgressText.Visibility = Visibility.Visible;
-        LogText.Text = LocalizationService.F("log.java.downloading", JavaVersionHelper.GetPreferredJavaMajor(mcVersion));
+        _viewModel.ShowProgressPanel();
+        _viewModel.SetStatus(LocalizationService.F("log.java.downloading", JavaVersionHelper.GetPreferredJavaMajor(mcVersion)));
 
         var ok = await _java.InstallJava(mcVersion);
 
-        DownloadProgress.Visibility = Visibility.Collapsed;
-        ProgressText.Visibility = Visibility.Collapsed;
-        DownloadProgress.Value = 0;
-        ProgressText.Text = "";
+        _viewModel.HideProgressPanel();
 
         if (!ok)
-            LogText.Text = LocalizationService.T("main.java_missing_status");
+            _viewModel.SetStatus(LocalizationService.T("main.java_missing_status"));
 
         return ok;
     }
@@ -220,13 +217,8 @@ public partial class MainWindow : Window, ILocalizable
         UpdateThemeTooltip();
     }
 
-    private void RefreshStatusText()
-    {
-        if (_viewModel.CurrentBuild != null)
-            CheckSelectedBuildInstalled();
-        else if (!_viewModel.IsDownloading)
-            LogText.Text = LocalizationService.T("main.ready");
-    }
+    private void RefreshStatusText() =>
+        _viewModel.RefreshLocalizedText(_minecraft.MinecraftDir);
 
     private void UpdateThemeTooltip()
     {
@@ -361,7 +353,7 @@ public partial class MainWindow : Window, ILocalizable
             return true;
 
         UpdateOfflineNameFeedback();
-        LogText.Text = error;
+        _viewModel.SetStatus(error);
         AddConsoleLine("❌ " + error);
         OfflineNameTextBox.Focus();
         return false;
@@ -369,19 +361,10 @@ public partial class MainWindow : Window, ILocalizable
 
     private void UpdateDownloadProgress(int progress, string text, bool lockPlayButton = false)
     {
-        var update = DownloadProgressHelper.CreateUpdate(progress, text);
-        DownloadProgress.Visibility = Visibility.Visible;
-        ProgressText.Visibility = Visibility.Visible;
-        if (update.UpdateBarValue)
-            DownloadProgress.Value = update.BarValue;
-        if (!string.IsNullOrEmpty(update.StatusText))
-            ProgressText.Text = update.StatusText;
+        _viewModel.ApplyDownloadProgress(progress, text);
 
         if (lockPlayButton)
-        {
-            PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
-            PlayButton.IsEnabled = false;
-        }
+            _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
     }
 
     private void SaveOfflineUsername()
@@ -438,21 +421,14 @@ public partial class MainWindow : Window, ILocalizable
     private CancellationToken BeginDownloadUi()
     {
         _lastInstallLogPath = null;
-        OpenInstallLogButton.Visibility = Visibility.Collapsed;
-        CancelDownloadButton.Visibility = Visibility.Visible;
-        DownloadProgress.Visibility = Visibility.Visible;
-        ProgressText.Visibility = Visibility.Visible;
+        _viewModel.BeginDownloadUi();
         return _installUi.BeginDownload();
     }
 
     private void EndDownloadUi()
     {
         _installUi.EndDownload();
-        CancelDownloadButton.Visibility = Visibility.Collapsed;
-        DownloadProgress.Visibility = Visibility.Collapsed;
-        ProgressText.Visibility = Visibility.Collapsed;
-        DownloadProgress.Value = 0;
-        ProgressText.Text = "";
+        _viewModel.EndDownloadUi();
     }
 
     private void HandleInstallFailure(BuildInfo build, bool wasCancelled)
@@ -465,8 +441,8 @@ public partial class MainWindow : Window, ILocalizable
             return;
 
         _lastInstallLogPath = logPath;
-        OpenInstallLogButton.Visibility = Visibility.Visible;
-        LogText.Text = LocalizationService.T("main.install_failed_short");
+        _viewModel.ShowOpenInstallLog();
+        _viewModel.SetStatus(LocalizationService.T("main.install_failed_short"));
         AddConsoleLine(LocalizationService.F("main.install_log_saved", Path.GetFileName(logPath)));
     }
 
@@ -500,8 +476,7 @@ public partial class MainWindow : Window, ILocalizable
             BuildsComboBox.Items.Add(LocalizationService.T("main.no_builds"));
             BuildsComboBox.IsEnabled = false;
             _viewModel.CurrentBuild = null;
-            PlayButton.IsEnabled = false;
-            SetPlayButton("⚠️", "main.no_builds_short");
+            _viewModel.SetTransientPlayButton("⚠️", "main.no_builds_short", enabled: false);
             return;
         }
 
@@ -584,11 +559,7 @@ public partial class MainWindow : Window, ILocalizable
     private void CheckSelectedBuildInstalled()
     {
         if (_viewModel.CurrentBuild == null) return;
-
-        var presentation = _viewModel.GetPlayButton(_minecraft.MinecraftDir);
-        PlayButton.IsEnabled = presentation.IsEnabled;
-        SetPlayButton(presentation.Icon, presentation.LocalizationKey);
-        LogText.Text = _viewModel.GetStatusText(_minecraft.MinecraftDir);
+        _viewModel.RefreshPlayState(_minecraft.MinecraftDir);
     }
 
     private void ImportModpack_Click(object sender, RoutedEventArgs e)
@@ -796,9 +767,8 @@ public partial class MainWindow : Window, ILocalizable
         if (_viewModel.CurrentBuild == null) return;
 
         _viewModel.IsDownloading = true;
-        PlayButton.IsEnabled = false;
-        PlayButton.Content = CreateButtonContent("⏳", "main.reinstalling");
-        LogText.Text = LocalizationService.T("main.reinstall_status");
+        _viewModel.SetTransientPlayButton("⏳", "main.reinstalling", enabled: false);
+        _viewModel.SetStatus(LocalizationService.T("main.reinstall_status"));
         AddConsoleLine(LocalizationService.F("main.reinstall_console", _viewModel.CurrentBuild.DisplayName));
 
         try
@@ -809,7 +779,7 @@ public partial class MainWindow : Window, ILocalizable
                     id == _viewModel.CurrentBuild.GetVersionId() ? "main.profile_deleted" : "main.base_deleted",
                     id));
 
-            PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
+            _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
             var cancellationToken = BeginDownloadUi();
             var installResult = await _launcherOrchestrator.ReinstallAsync(_viewModel.CurrentBuild, cancellationToken);
             var wasCancelled = installResult == InstallFlowResult.Cancelled;
@@ -817,30 +787,25 @@ public partial class MainWindow : Window, ILocalizable
 
             if (installResult is InstallFlowResult.Success or InstallFlowResult.AlreadyInstalled)
             {
-                PlayButton.IsEnabled = true;
-                PlayButton.Content = CreateButtonContent("▶", "main.play");
-                LogText.Text = LocalizationService.F("main.reinstall_done", _viewModel.CurrentBuild.DisplayName);
+                _viewModel.SetStatus(LocalizationService.F("main.reinstall_done", _viewModel.CurrentBuild.DisplayName));
                 AddConsoleLine(LocalizationService.F("main.reinstall_done", _viewModel.CurrentBuild.DisplayName));
             }
             else
             {
-                LogText.Text = wasCancelled
+                _viewModel.SetStatus(wasCancelled
                     ? LocalizationService.T("main.download_cancelled")
-                    : LocalizationService.F("main.reinstall_failed", _viewModel.CurrentBuild.DisplayName);
+                    : LocalizationService.F("main.reinstall_failed", _viewModel.CurrentBuild.DisplayName));
                 if (!wasCancelled)
                     HandleInstallFailure(_viewModel.CurrentBuild, wasCancelled);
-                PlayButton.IsEnabled = true;
-                PlayButton.Content = CreateButtonContent("⬇️", "main.download");
+                _viewModel.SetTransientPlayButton("⬇️", "main.download");
             }
         }
         catch (Exception ex)
         {
-            LogText.Text = LocalizationService.F("main.error_with_message", ex.Message);
+            _viewModel.SetStatus(LocalizationService.F("main.error_with_message", ex.Message));
             AddConsoleLine(LocalizationService.F("main.error_with_message", ex.Message));
             if (_viewModel.CurrentBuild != null)
                 HandleInstallFailure(_viewModel.CurrentBuild, wasCancelled: false);
-            PlayButton.IsEnabled = true;
-            PlayButton.Content = CreateButtonContent("▶", "main.play");
         }
         finally
         {
@@ -907,7 +872,6 @@ public partial class MainWindow : Window, ILocalizable
         PlayButton.Foreground = Brushes.White;
         DownloadProgress.Foreground = _themeService.ProgressForegroundBrush;
         DownloadProgress.Background = _themeService.ProgressBackgroundBrush;
-        ProgressText.Foreground = _themeService.SecondaryTextBrush;
         ThemeIcon.Text = _themeService.ThemeIcon;
         ThemeToggle.ToolTip = LocalizationService.T(_themeService.ThemeTooltipKey);
     }
@@ -974,7 +938,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             _authInProgress = false;
             SetProfileState(true, username);
-            LogText.Text = LocalizationService.F("main.auth_success_status", username);
+            _viewModel.SetStatus(LocalizationService.F("main.auth_success_status", username));
             AddConsoleLine(LocalizationService.F("main.auth_welcome", username));
             AddConsoleLine(LocalizationService.F("main.auth_uuid", uuid));
             _ = LoadSkinAsync(uuid);
@@ -986,7 +950,7 @@ public partial class MainWindow : Window, ILocalizable
         Dispatcher.Invoke(() =>
         {
             _authInProgress = false;
-            LogText.Text = LocalizationService.F("main.error_with_message", error);
+            _viewModel.SetStatus(LocalizationService.F("main.error_with_message", error));
             AddConsoleLine(LocalizationService.F("main.error_with_message", error));
             AuthButton.IsEnabled = true;
         });
@@ -998,7 +962,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             SetProfileState(false);
             SetDefaultSkin();
-            LogText.Text = LocalizationService.T("main.session_expired_status");
+            _viewModel.SetStatus(LocalizationService.T("main.session_expired_status"));
             AddConsoleLine(LocalizationService.T("main.session_expired_console"));
         });
     }
@@ -1008,7 +972,7 @@ public partial class MainWindow : Window, ILocalizable
         if (_settings.OfflineOnly || _authInProgress) return;
         AuthButton.IsEnabled = false;
         _authInProgress = true;
-        LogText.Text = LocalizationService.T("main.auth_starting_status");
+        _viewModel.SetStatus(LocalizationService.T("main.auth_starting_status"));
         AddConsoleLine(LocalizationService.T("main.auth_starting_console"));
         
         try
@@ -1034,7 +998,7 @@ public partial class MainWindow : Window, ILocalizable
     {
         _auth.Logout();
         SetProfileState(false);
-        LogText.Text = LocalizationService.T("main.logout_done");
+        _viewModel.SetStatus(LocalizationService.T("main.logout_done"));
         AddConsoleLine(LocalizationService.T("main.logout_console"));
         _authInProgress = false;
         SetDefaultSkin();
@@ -1088,25 +1052,13 @@ public partial class MainWindow : Window, ILocalizable
         return parent as T;
     }
     
-    private void SetPlayButton(string icon, string textKey)
-    {
-        PlayButtonIcon.Text = icon + (icon.Length > 1 ? "" : " ");
-        PlayButtonLabel.Text = LocalizationService.T(textKey);
-    }
-
-    private StackPanel CreateButtonContent(string icon, string textKey)
-    {
-        SetPlayButton(icon, textKey);
-        return (StackPanel)PlayButton.Content;
-    }
-
     private void PlayButton_Click(object sender, RoutedEventArgs e) =>
         UiAsync.Run(PlayButton_ClickAsync, Dispatcher);
 
     private async Task PlayButton_ClickAsync()
     {
         if (_viewModel.IsDownloading) return;
-        PlayButton.IsEnabled = false;
+        _viewModel.SetPlayEnabled(false);
         _viewModel.IsDownloading = true;
 
         try
@@ -1115,7 +1067,7 @@ public partial class MainWindow : Window, ILocalizable
             if (validation == PlayValidationResult.NoBuild)
             {
                 MessageBox.Show(LocalizationService.T("main.select_build_launch"), LocalizationService.T("main.launch_title"), MessageBoxButton.OK, MessageBoxImage.Information);
-                LogText.Text = LocalizationService.T("main.no_build_selected_log");
+                _viewModel.SetStatus(LocalizationService.T("main.no_build_selected_log"));
                 RestorePlayButton();
                 return;
             }
@@ -1145,26 +1097,25 @@ public partial class MainWindow : Window, ILocalizable
 
             if (!_launcherOrchestrator.IsInstalled(_viewModel.CurrentBuild!))
             {
-                PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
+                _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
                 var cancellationToken = BeginDownloadUi();
                 var installResult = await _launcherOrchestrator.InstallIfNeededAsync(_viewModel.CurrentBuild!, cancellationToken);
                 var wasCancelled = installResult == InstallFlowResult.Cancelled;
                 EndDownloadUi();
                 if (installResult is InstallFlowResult.Failed or InstallFlowResult.Cancelled)
                 {
-                    LogText.Text = wasCancelled
+                    _viewModel.SetStatus(wasCancelled
                         ? LocalizationService.T("main.download_cancelled")
-                        : LocalizationService.T("main.install_failed_short");
+                        : LocalizationService.T("main.install_failed_short"));
                     if (!wasCancelled)
                         HandleInstallFailure(_viewModel.CurrentBuild!, wasCancelled);
-                    PlayButton.IsEnabled = true;
-                    PlayButton.Content = CreateButtonContent("⬇️", "main.download");
+                    _viewModel.SetTransientPlayButton("⬇️", "main.download");
                     _viewModel.IsDownloading = false;
                     return;
                 }
             }
 
-            PlayButton.Content = CreateButtonContent("⏳", "main.launching");
+            _viewModel.SetTransientPlayButton("⏳", "main.launching", enabled: false);
 
             var preparation = await _launcherOrchestrator.PrepareLaunchAsync(
                 _viewModel.CurrentBuild!,
@@ -1190,7 +1141,7 @@ public partial class MainWindow : Window, ILocalizable
                     LocalizationService.T("main.session_expired_title"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
-                LogText.Text = LocalizationService.T("main.session_expired_status");
+                _viewModel.SetStatus(LocalizationService.T("main.session_expired_status"));
                 AddConsoleLine(LocalizationService.T("main.session_expired_console_short"));
                 RestorePlayButton();
                 return;
@@ -1208,10 +1159,9 @@ public partial class MainWindow : Window, ILocalizable
 
             if (_gameProcess != null)
             {
-                LogText.Text = LocalizationService.T("main.game_launched");
+                _viewModel.SetStatus(LocalizationService.T("main.game_launched"));
                 AddConsoleLine(LocalizationService.T("main.game_launched_console"));
-                PlayButton.Content = CreateButtonContent("▶", "main.game_running");
-                PlayButton.IsEnabled = false;
+                _viewModel.SetTransientPlayButton("▶", "main.game_running", enabled: false);
                 var buildName = _viewModel.CurrentBuild.DisplayName;
                 _ = Task.Run(() =>
                 {
@@ -1219,21 +1169,20 @@ public partial class MainWindow : Window, ILocalizable
                     var exitCode = _gameProcess.ExitCode;
                     Dispatcher.Invoke(() =>
                     {
-                        PlayButton.IsEnabled = true;
-                        PlayButton.Content = CreateButtonContent("▶", "main.play");
                         _viewModel.IsDownloading = false;
+                        _viewModel.RefreshPlayState(_minecraft.MinecraftDir);
 
                         if (exitCode != 0)
                         {
                             var logPath = _logService.SaveGameLog(buildName, _mcOutputLines);
-                            LogText.Text = LocalizationService.F("main.game_exit_code", exitCode);
+                            _viewModel.SetStatus(LocalizationService.F("main.game_exit_code", exitCode));
                             AddConsoleLine(LocalizationService.F("main.game_exit_code", exitCode));
                             if (!string.IsNullOrEmpty(logPath))
                                 AddConsoleLine(LocalizationService.F("main.log_saved", Path.GetFileName(logPath)));
                         }
                         else
                         {
-                            LogText.Text = LocalizationService.T("main.game_closed");
+                            _viewModel.SetStatus(LocalizationService.T("main.game_closed"));
                             AddConsoleLine(LocalizationService.T("main.game_closed"));
                         }
                     });
@@ -1246,7 +1195,7 @@ public partial class MainWindow : Window, ILocalizable
         }
         catch (Exception ex)
         {
-            LogText.Text = LocalizationService.F("main.error_with_message", ex.Message);
+            _viewModel.SetStatus(LocalizationService.F("main.error_with_message", ex.Message));
             AddConsoleLine(LocalizationService.F("main.error_with_message", ex.Message));
             RestorePlayButton();
         }
@@ -1255,9 +1204,7 @@ public partial class MainWindow : Window, ILocalizable
     private void RestorePlayButton()
     {
         EndDownloadUi();
-        var presentation = _viewModel.GetRestorePlayButton(_minecraft.MinecraftDir);
-        PlayButton.IsEnabled = presentation.IsEnabled;
-        PlayButton.Content = CreateButtonContent(presentation.Icon, presentation.LocalizationKey);
+        _viewModel.RefreshPlayState(_minecraft.MinecraftDir);
         _viewModel.IsDownloading = false;
     }
 

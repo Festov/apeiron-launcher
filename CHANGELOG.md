@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0 — 2026-07-12
+
+### Stability & architecture (Stage 6)
+- `MainViewModel` with XAML bindings for status, play button, and download progress
+- Structured JSONL event log (`logs/launcher-events.jsonl`)
+- `LauncherOrchestrator`, resume downloads, manifest cache, CLI `--launch`/`--help`
+- Mod search, recent MC versions, release notes in update prompts
+- `ARCHITECTURE.md`, expanded unit tests (174+), CI publish step, Dependabot
+
 ## 1.4.0 — 2026-07-09
 
 ### Features (Stage 5)

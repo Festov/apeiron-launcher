@@ -131,9 +131,12 @@
 
 ---
 
-## Этап 6 — Стабильность и UX v1.5 (in progress)
+## Этап 6 — Стабильность и UX v1.5
 
-- [ ] `dotnet test Apeiron.Tests -c Release` — все тесты зелёные (149+)
+- [x] `dotnet test Apeiron.Tests -c Release` — все тесты зелёные (178)
+- [x] `MainViewModel` + XAML bindings (статус, Play, прогресс загрузки)
+- [x] Структурированный JSONL-лог (`logs/launcher-events.jsonl`)
+- [x] Версия **v1.5** в заголовке окна и настройках
 - [ ] Drag-and-drop modpack `.zip` на главное окно — новая сборка в списке
 - [ ] CLI `--launch "имя сборки"` — автозапуск выбранной сборки
 - [ ] CLI `--help` — справка по аргументам
@@ -144,7 +147,7 @@
 - [ ] Недавние версии MC отображаются вверху списка при создании сборки
 - [ ] При обновлении лаунчера показываются release notes
 - [ ] UI без скруглений у кнопок и полей ввода/выбора
-- [ ] `ARCHITECTURE.md` описывает install/launch flow
+- [x] `ARCHITECTURE.md` описывает install/launch flow
 
 ---
 
@@ -154,7 +157,7 @@
 dotnet test Apeiron.Tests/Apeiron.Tests.csproj -c Release
 ```
 
-Все тесты должны проходить перед релизом (149+).
+Все тесты должны проходить перед релизом (178+).
 
 ---
 
