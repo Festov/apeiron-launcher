@@ -10,7 +10,7 @@
     <AssemblyTitle>Apeiron Launcher</AssemblyTitle>
     <Authors>Apeiron</Authors>
     <Description>Minecraft Launcher for Apeiron</Description>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -19,6 +19,10 @@
     <PublishTrimmed>false</PublishTrimmed>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>

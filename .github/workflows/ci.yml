@@ -25,3 +25,6 @@ jobs:
 
       - name: Test
         run: dotnet test Apeiron.Tests/Apeiron.Tests.csproj -c Release --verbosity normal
+
+      - name: Publish
+        run: dotnet publish Apeiron.csproj -c Release --no-build -o publish

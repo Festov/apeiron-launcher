@@ -32,4 +32,35 @@ public class BuildInstallServiceTests
             try { Directory.Delete(root, true); } catch { }
         }
     }
+
+    [Fact]
+    public void ClearInstalledArtifacts_removes_version_and_base_folders_for_modded_build()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "apeiron-test-" + Guid.NewGuid().ToString("N"));
+        var build = new BuildInfo
+        {
+            MinecraftVersion = "1.20.1",
+            Loader = "Fabric",
+            LoaderVersion = "0.15.0",
+            IsModded = true
+        };
+
+        try
+        {
+            var versionId = build.GetVersionId();
+            Directory.CreateDirectory(Path.Combine(root, "versions", versionId));
+            Directory.CreateDirectory(Path.Combine(root, "versions", build.MinecraftVersion));
+
+            var removed = BuildInstallService.ClearInstalledArtifacts(root, build);
+
+            Assert.Contains(versionId, removed);
+            Assert.Contains(build.MinecraftVersion, removed);
+            Assert.False(Directory.Exists(Path.Combine(root, "versions", versionId)));
+            Assert.False(Directory.Exists(Path.Combine(root, "versions", build.MinecraftVersion)));
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
 }

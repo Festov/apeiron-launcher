@@ -1,6 +1,7 @@
 dist/
 bin/
 obj/
+publish/
 logs/
 instances/
 files/

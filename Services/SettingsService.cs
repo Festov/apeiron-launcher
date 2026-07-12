@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace Apeiron.Services;
@@ -16,10 +18,11 @@ public class SettingsService
     public string Language { get; set; } = "auto";
     public bool OfflineOnly { get; set; }
     public bool CheckForUpdates { get; set; } = true;
+    public List<string> RecentMcVersions { get; set; } = new();
 
-    public SettingsService()
+    public SettingsService(string? launcherDir = null)
     {
-        _launcherDir = AppDomain.CurrentDomain.BaseDirectory;
+        _launcherDir = launcherDir ?? AppDomain.CurrentDomain.BaseDirectory;
         var configDir = Path.Combine(_launcherDir, "config");
         Directory.CreateDirectory(configDir);
         _settingsPath = Path.Combine(configDir, "settings.json");
@@ -54,6 +57,16 @@ public class SettingsService
                 OfflineOnly = offlineOnly.GetBoolean();
             if (root.TryGetProperty("CheckForUpdates", out var checkUpdates))
                 CheckForUpdates = checkUpdates.GetBoolean();
+            if (root.TryGetProperty("RecentMcVersions", out var recentMcVersions) &&
+                recentMcVersions.ValueKind == JsonValueKind.Array)
+            {
+                RecentMcVersions = recentMcVersions
+                    .EnumerateArray()
+                    .Select(item => item.GetString())
+                    .Where(version => !string.IsNullOrWhiteSpace(version))
+                    .Select(version => version!.Trim())
+                    .ToList();
+            }
 
             if (Ram == 4)
             {
@@ -79,7 +92,8 @@ public class SettingsService
                 DefaultBuildId,
                 Language,
                 OfflineOnly,
-                CheckForUpdates
+                CheckForUpdates,
+                RecentMcVersions
             };
             var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
             AtomicFile.WriteAllText(_settingsPath, json);

@@ -11,6 +11,7 @@ using System.Windows.Documents;
 using System.IO;
 using System.Collections.Generic;
 using Apeiron.Services;
+using Apeiron.ViewModels;
 
 namespace Apeiron;
 
@@ -25,23 +26,27 @@ public partial class MainWindow : Window, ILocalizable
     private readonly LoaderService _loader;
     private readonly BuildInstallService _buildInstall;
     private readonly VersionLauncher _versionLauncher;
+    private readonly PlayOrchestrator _playOrchestrator;
+    private readonly LauncherOrchestrator _launcherOrchestrator;
     private readonly SkinService _skinService;
     private readonly ThemeService _themeService = new();
     private readonly List<string> _mcOutputLines = new();
-    private readonly InstallSession _installSession = new();
+    private readonly InstallUiCoordinator _installUi = new();
     private string? _lastInstallLogPath;
     private Process? _gameProcess;
     private bool _authInProgress = false;
-    private bool _isDownloading = false;
+    private readonly MainViewModel _viewModel = new();
     private bool _isDarkTheme = false;
-    private BuildInfo? _currentBuild = null;
+    private readonly string? _pendingLaunchTarget;
     private const int MaxConsoleLines = 500;
     
-    public MainWindow(SettingsService settings)
+    public MainWindow(SettingsService settings, string? launchTarget = null)
     {
         InitializeComponent();
+        DataContext = _viewModel;
 
         _settings = settings;
+        _pendingLaunchTarget = launchTarget;
         _logService = new LogService();
         _minecraft = new MinecraftService(_settings.GetMinecraftDir());
         _java = new JavaService();
@@ -49,6 +54,8 @@ public partial class MainWindow : Window, ILocalizable
         _loader = new LoaderService(_minecraft.MinecraftDir);
         _buildInstall = new BuildInstallService(_minecraft, _loader);
         _versionLauncher = new VersionLauncher(_minecraft.MinecraftDir);
+        _playOrchestrator = new PlayOrchestrator(_minecraft, _buildInstall, _versionLauncher, _java);
+        _launcherOrchestrator = new LauncherOrchestrator(_playOrchestrator, _minecraft);
         _skinService = new SkinService(_minecraft.MinecraftDir);
         
         _auth.OnAuthSuccess += OnAuthSuccess!;
@@ -62,7 +69,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             Dispatcher.Invoke(() =>
             {
-                LogText.Text = msg;
+                _viewModel.SetStatus(msg);
                 AddConsoleLine(msg);
             });
         };
@@ -73,7 +80,7 @@ public partial class MainWindow : Window, ILocalizable
             {
                 if (msg.StartsWith("[MC]"))
                     _mcOutputLines.Add(msg);
-                LogText.Text = msg;
+                _viewModel.SetStatus(msg);
                 AddConsoleLine(msg);
             });
         };
@@ -85,7 +92,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             Dispatcher.Invoke(() =>
             {
-                LogText.Text = msg;
+                _viewModel.SetStatus(msg);
                 AddConsoleLine(msg);
             });
         };
@@ -94,7 +101,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             Dispatcher.Invoke(() =>
             {
-                LogText.Text = msg;
+                _viewModel.SetStatus(msg);
                 AddConsoleLine(msg);
             });
         };
@@ -117,7 +124,7 @@ public partial class MainWindow : Window, ILocalizable
                     Dispatcher.Invoke(() =>
                     {
                         SetProfileState(false);
-                        LogText.Text = LocalizationService.T("main.session_expired_status");
+                        _viewModel.SetStatus(LocalizationService.T("main.session_expired_status"));
                         AddConsoleLine(LocalizationService.T("main.session_expired_console"));
                     });
                 }
@@ -141,13 +148,14 @@ public partial class MainWindow : Window, ILocalizable
             ApplyOfflineOnlyMode();
             if (_settings.CheckForUpdates && LauncherMetadata.HasUpdateSource)
                 _ = CheckForUpdatesOnStartupAsync();
+            TryQuickLaunchFromArgs();
         };
         Closed += (_, _) => LocalizationService.Instance.LanguageChanged -= OnLanguageChanged;
     }
 
     private void PromptJavaInstallIfNeeded()
     {
-        var mcVersion = _currentBuild?.MinecraftVersion ?? "1.21";
+        var mcVersion = _viewModel.CurrentBuild?.MinecraftVersion ?? "1.21";
         if (_java.IsJavaInstalled(mcVersion))
             return;
 
@@ -164,19 +172,15 @@ public partial class MainWindow : Window, ILocalizable
 
     private async Task<bool> InstallJavaQuietlyAsync(string mcVersion)
     {
-        DownloadProgress.Visibility = Visibility.Visible;
-        ProgressText.Visibility = Visibility.Visible;
-        LogText.Text = LocalizationService.F("log.java.downloading", JavaVersionHelper.GetPreferredJavaMajor(mcVersion));
+        _viewModel.ShowProgressPanel();
+        _viewModel.SetStatus(LocalizationService.F("log.java.downloading", JavaVersionHelper.GetPreferredJavaMajor(mcVersion)));
 
         var ok = await _java.InstallJava(mcVersion);
 
-        DownloadProgress.Visibility = Visibility.Collapsed;
-        ProgressText.Visibility = Visibility.Collapsed;
-        DownloadProgress.Value = 0;
-        ProgressText.Text = "";
+        _viewModel.HideProgressPanel();
 
         if (!ok)
-            LogText.Text = LocalizationService.T("main.java_missing_status");
+            _viewModel.SetStatus(LocalizationService.T("main.java_missing_status"));
 
         return ok;
     }
@@ -205,7 +209,7 @@ public partial class MainWindow : Window, ILocalizable
             SetProfileState(false);
 
         RefreshStatusText();
-        var selectedId = _currentBuild?.Id;
+        var selectedId = _viewModel.CurrentBuild?.Id;
         LoadBuilds();
         if (!string.IsNullOrEmpty(selectedId))
             SelectBuildInCombo(selectedId);
@@ -213,13 +217,8 @@ public partial class MainWindow : Window, ILocalizable
         UpdateThemeTooltip();
     }
 
-    private void RefreshStatusText()
-    {
-        if (_currentBuild != null)
-            CheckSelectedBuildInstalled();
-        else if (!_isDownloading)
-            LogText.Text = LocalizationService.T("main.ready");
-    }
+    private void RefreshStatusText() =>
+        _viewModel.RefreshLocalizedText(_minecraft.MinecraftDir);
 
     private void UpdateThemeTooltip()
     {
@@ -286,9 +285,8 @@ public partial class MainWindow : Window, ILocalizable
             if (update == null)
                 return;
 
-            var message = LocalizationService.F(
-                "settings.update_available",
-                update.LatestVersion,
+            var message = LauncherUpdatePromptHelper.BuildPrompt(
+                update,
                 LauncherUpdateService.GetCurrentVersion());
 
             if (MessageBox.Show(
@@ -355,7 +353,7 @@ public partial class MainWindow : Window, ILocalizable
             return true;
 
         UpdateOfflineNameFeedback();
-        LogText.Text = error;
+        _viewModel.SetStatus(error);
         AddConsoleLine("❌ " + error);
         OfflineNameTextBox.Focus();
         return false;
@@ -363,18 +361,10 @@ public partial class MainWindow : Window, ILocalizable
 
     private void UpdateDownloadProgress(int progress, string text, bool lockPlayButton = false)
     {
-        DownloadProgress.Visibility = Visibility.Visible;
-        ProgressText.Visibility = Visibility.Visible;
-        if (progress >= 0)
-            DownloadProgress.Value = Math.Clamp(progress, 0, 100);
-        if (!string.IsNullOrEmpty(text))
-            ProgressText.Text = text;
+        _viewModel.ApplyDownloadProgress(progress, text);
 
         if (lockPlayButton)
-        {
-            PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
-            PlayButton.IsEnabled = false;
-        }
+            _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
     }
 
     private void SaveOfflineUsername()
@@ -424,28 +414,21 @@ public partial class MainWindow : Window, ILocalizable
 
     private void CancelDownload_Click(object sender, RoutedEventArgs e)
     {
-        _installSession.Cancel();
+        _installUi.CancelDownload();
         AddConsoleLine(LocalizationService.T("main.download_cancelled"));
     }
 
     private CancellationToken BeginDownloadUi()
     {
         _lastInstallLogPath = null;
-        OpenInstallLogButton.Visibility = Visibility.Collapsed;
-        CancelDownloadButton.Visibility = Visibility.Visible;
-        DownloadProgress.Visibility = Visibility.Visible;
-        ProgressText.Visibility = Visibility.Visible;
-        return _installSession.Begin();
+        _viewModel.BeginDownloadUi();
+        return _installUi.BeginDownload();
     }
 
     private void EndDownloadUi()
     {
-        _installSession.End();
-        CancelDownloadButton.Visibility = Visibility.Collapsed;
-        DownloadProgress.Visibility = Visibility.Collapsed;
-        ProgressText.Visibility = Visibility.Collapsed;
-        DownloadProgress.Value = 0;
-        ProgressText.Text = "";
+        _installUi.EndDownload();
+        _viewModel.EndDownloadUi();
     }
 
     private void HandleInstallFailure(BuildInfo build, bool wasCancelled)
@@ -453,13 +436,13 @@ public partial class MainWindow : Window, ILocalizable
         if (wasCancelled)
             return;
 
-        var logPath = _installSession.SaveFailureLog(build.DisplayName, _logService);
+        var logPath = _installUi.SaveInstallFailureLog(build.DisplayName, _logService, wasCancelled);
         if (string.IsNullOrEmpty(logPath))
             return;
 
         _lastInstallLogPath = logPath;
-        OpenInstallLogButton.Visibility = Visibility.Visible;
-        LogText.Text = LocalizationService.T("main.install_failed_short");
+        _viewModel.ShowOpenInstallLog();
+        _viewModel.SetStatus(LocalizationService.T("main.install_failed_short"));
         AddConsoleLine(LocalizationService.F("main.install_log_saved", Path.GetFileName(logPath)));
     }
 
@@ -492,9 +475,8 @@ public partial class MainWindow : Window, ILocalizable
         {
             BuildsComboBox.Items.Add(LocalizationService.T("main.no_builds"));
             BuildsComboBox.IsEnabled = false;
-            _currentBuild = null;
-            PlayButton.IsEnabled = false;
-            SetPlayButton("⚠️", "main.no_builds_short");
+            _viewModel.CurrentBuild = null;
+            _viewModel.SetTransientPlayButton("⚠️", "main.no_builds_short", enabled: false);
             return;
         }
 
@@ -526,8 +508,36 @@ public partial class MainWindow : Window, ILocalizable
         }
 
         BuildsComboBox.SelectedIndex = index;
-        _currentBuild = BuildsComboBox.SelectedItem as BuildInfo;
+        _viewModel.CurrentBuild = BuildsComboBox.SelectedItem as BuildInfo;
         CheckSelectedBuildInstalled();
+    }
+
+    private bool TrySelectBuildByIdOrName(string key)
+    {
+        var build = BuildListHelper.FindByIdOrName(BuildsComboBox.Items.OfType<BuildInfo>(), key);
+        if (build == null)
+            return false;
+
+        BuildsComboBox.SelectedItem = build;
+        _viewModel.CurrentBuild = build;
+        CheckSelectedBuildInstalled();
+        return true;
+    }
+
+    private void TryQuickLaunchFromArgs()
+    {
+        if (string.IsNullOrWhiteSpace(_pendingLaunchTarget))
+            return;
+
+        var target = _pendingLaunchTarget;
+        if (!TrySelectBuildByIdOrName(target))
+        {
+            AddConsoleLine(LocalizationService.F("main.cli_build_not_found", target));
+            return;
+        }
+
+        AddConsoleLine(LocalizationService.F("main.cli_launch", _viewModel.CurrentBuild!.DisplayName));
+        UiAsync.Run(PlayButton_ClickAsync, Dispatcher);
     }
 
     private void BuildsComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -538,9 +548,9 @@ public partial class MainWindow : Window, ILocalizable
         if (BuildsComboBox.SelectedItem is string)
             return;
         
-        _currentBuild = BuildsComboBox.SelectedItem as BuildInfo;
+        _viewModel.CurrentBuild = BuildsComboBox.SelectedItem as BuildInfo;
         
-        if (_currentBuild != null)
+        if (_viewModel.CurrentBuild != null)
         {
             CheckSelectedBuildInstalled();
         }
@@ -548,22 +558,8 @@ public partial class MainWindow : Window, ILocalizable
     
     private void CheckSelectedBuildInstalled()
     {
-        if (_currentBuild == null) return;
-
-        var installed = BuildInstallService.IsInstalled(_minecraft.MinecraftDir, _currentBuild);
-
-        if (installed)
-        {
-            PlayButton.IsEnabled = true;
-            SetPlayButton("▶", "main.play");
-            LogText.Text = LocalizationService.F("main.build_ready", _currentBuild.DisplayName);
-        }
-        else
-        {
-            PlayButton.IsEnabled = true;
-            SetPlayButton("⬇️", "main.download");
-            LogText.Text = LocalizationService.F("main.build_download_hint", _currentBuild.DisplayName);
-        }
+        if (_viewModel.CurrentBuild == null) return;
+        _viewModel.RefreshPlayState(_minecraft.MinecraftDir);
     }
 
     private void ImportModpack_Click(object sender, RoutedEventArgs e)
@@ -579,33 +575,7 @@ public partial class MainWindow : Window, ILocalizable
             if (dialog.ShowDialog() != true)
                 return;
 
-            var instancesRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "instances");
-            Directory.CreateDirectory(instancesRoot);
-            var build = ModpackImportService.ImportAsNewInstance(dialog.FileName, instancesRoot);
-
-            _buildManager.AddBuild(build);
-
-            if (BuildsComboBox.Items.Count == 1 && BuildsComboBox.Items[0] is string)
-            {
-                BuildsComboBox.Items.Clear();
-            }
-
-            BuildsComboBox.IsEnabled = true;
-            BuildsComboBox.Items.Add(build);
-            BuildsComboBox.SelectedIndex = BuildsComboBox.Items.Count - 1;
-            _currentBuild = build;
-
-            AddConsoleLine(LocalizationService.F("main.modpack_imported", build.DisplayName));
-            if (string.IsNullOrWhiteSpace(build.MinecraftVersion))
-            {
-                MessageBox.Show(
-                    LocalizationService.T("main.modpack_configure_hint"),
-                    LocalizationService.T("main.import_modpack_tooltip"),
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-            }
-
-            CheckSelectedBuildInstalled();
+            ImportModpackFromZip(dialog.FileName);
         }
         catch (InvalidOperationException ex)
         {
@@ -618,11 +588,75 @@ public partial class MainWindow : Window, ILocalizable
         }
     }
 
+    private void MainWindow_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void MainWindow_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] files)
+            return;
+
+        var zipFiles = FileDropHelper.GetZipFiles(files);
+        if (zipFiles.Count == 0)
+        {
+            AddConsoleLine(LocalizationService.T("main.modpack_drop_invalid"));
+            return;
+        }
+
+        foreach (var zipPath in zipFiles)
+        {
+            try
+            {
+                ImportModpackFromZip(zipPath);
+            }
+            catch (InvalidOperationException ex)
+            {
+                AddConsoleLine(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                AddConsoleLine(LocalizationService.F("main.create_build_error", ex.Message));
+            }
+        }
+    }
+
+    private void ImportModpackFromZip(string zipPath)
+    {
+        var instancesRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "instances");
+        Directory.CreateDirectory(instancesRoot);
+        var build = ModpackImportService.ImportAsNewInstance(zipPath, instancesRoot);
+
+        _buildManager.AddBuild(build);
+
+        if (BuildsComboBox.Items.Count == 1 && BuildsComboBox.Items[0] is string)
+            BuildsComboBox.Items.Clear();
+
+        BuildsComboBox.IsEnabled = true;
+        BuildsComboBox.Items.Add(build);
+        BuildsComboBox.SelectedIndex = BuildsComboBox.Items.Count - 1;
+        _viewModel.CurrentBuild = build;
+
+        AddConsoleLine(LocalizationService.F("main.modpack_imported", build.DisplayName));
+        if (string.IsNullOrWhiteSpace(build.MinecraftVersion))
+        {
+            MessageBox.Show(
+                LocalizationService.T("main.modpack_configure_hint"),
+                LocalizationService.T("main.import_modpack_tooltip"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        CheckSelectedBuildInstalled();
+    }
+
     private void AddBuild_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            var addBuildWindow = new AddBuildWindow();
+            var addBuildWindow = new AddBuildWindow(_settings);
             addBuildWindow.Owner = this;
             
             if (addBuildWindow.ShowDialog() == true && addBuildWindow.CreatedBuild != null)
@@ -640,7 +674,7 @@ public partial class MainWindow : Window, ILocalizable
                 BuildsComboBox.IsEnabled = true;
                 BuildsComboBox.Items.Add(build);
                 BuildsComboBox.SelectedIndex = BuildsComboBox.Items.Count - 1;
-                _currentBuild = build;
+                _viewModel.CurrentBuild = build;
                 
                 AddConsoleLine(LocalizationService.F("main.build_created", build.DisplayName));
                 CheckSelectedBuildInstalled();
@@ -662,13 +696,13 @@ public partial class MainWindow : Window, ILocalizable
 
     private async Task EditBuildAsync()
     {
-        if (_currentBuild == null)
+        if (_viewModel.CurrentBuild == null)
         {
             MessageBox.Show(LocalizationService.T("main.select_build_edit"), LocalizationService.T("common.attention"), MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var editWindow = new EditBuildWindow(_currentBuild, _settings);
+        var editWindow = new EditBuildWindow(_viewModel.CurrentBuild, _settings);
         editWindow.Owner = this;
 
         if (editWindow.ShowDialog() != true)
@@ -678,8 +712,8 @@ public partial class MainWindow : Window, ILocalizable
         {
             if (editWindow.DeleteRequested)
             {
-                var deletedId = _currentBuild.Id;
-                var deletedName = _currentBuild.Name;
+                var deletedId = _viewModel.CurrentBuild.Id;
+                var deletedName = _viewModel.CurrentBuild.Name;
                 if (_settings.DefaultBuildId == deletedId)
                 {
                     _settings.DefaultBuildId = "";
@@ -693,7 +727,7 @@ public partial class MainWindow : Window, ILocalizable
 
             if (editWindow.DuplicateRequested)
             {
-                var sourceId = _currentBuild.Id;
+                var sourceId = _viewModel.CurrentBuild.Id;
                 var clone = _buildManager.DuplicateBuild(sourceId, copyModsAndConfig: true);
                 var builds = _buildManager.LoadBuilds();
                 PopulateBuildsCombo(builds, clone.Id);
@@ -730,70 +764,52 @@ public partial class MainWindow : Window, ILocalizable
 
     private async Task ReinstallBuildAsync()
     {
-        if (_currentBuild == null) return;
+        if (_viewModel.CurrentBuild == null) return;
 
-        _isDownloading = true;
-        PlayButton.IsEnabled = false;
-        PlayButton.Content = CreateButtonContent("⏳", "main.reinstalling");
-        LogText.Text = LocalizationService.T("main.reinstall_status");
-        AddConsoleLine(LocalizationService.F("main.reinstall_console", _currentBuild.DisplayName));
+        _viewModel.IsDownloading = true;
+        _viewModel.SetTransientPlayButton("⏳", "main.reinstalling", enabled: false);
+        _viewModel.SetStatus(LocalizationService.T("main.reinstall_status"));
+        AddConsoleLine(LocalizationService.F("main.reinstall_console", _viewModel.CurrentBuild.DisplayName));
 
         try
         {
-            var versionId = _currentBuild.GetVersionId();
-            var versionDir = Path.Combine(_minecraft.MinecraftDir, "versions", versionId);
-            if (Directory.Exists(versionDir))
-            {
-                Directory.Delete(versionDir, true);
-                AddConsoleLine(LocalizationService.F("main.profile_deleted", versionId));
-            }
+            var removed = _launcherOrchestrator.ClearForReinstall(_viewModel.CurrentBuild);
+            foreach (var id in removed)
+                AddConsoleLine(LocalizationService.F(
+                    id == _viewModel.CurrentBuild.GetVersionId() ? "main.profile_deleted" : "main.base_deleted",
+                    id));
 
-            if (_currentBuild.IsModded)
-            {
-                var mcDir = Path.Combine(_minecraft.MinecraftDir, "versions", _currentBuild.MinecraftVersion);
-                if (Directory.Exists(mcDir))
-                {
-                    Directory.Delete(mcDir, true);
-                    AddConsoleLine(LocalizationService.F("main.base_deleted", _currentBuild.MinecraftVersion));
-                }
-            }
-
-            PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
+            _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
             var cancellationToken = BeginDownloadUi();
-            var success = await _buildInstall.InstallAsync(_currentBuild, cancellationToken);
-            var wasCancelled = cancellationToken.IsCancellationRequested;
+            var installResult = await _launcherOrchestrator.ReinstallAsync(_viewModel.CurrentBuild, cancellationToken);
+            var wasCancelled = installResult == InstallFlowResult.Cancelled;
             EndDownloadUi();
 
-            if (success)
+            if (installResult is InstallFlowResult.Success or InstallFlowResult.AlreadyInstalled)
             {
-                PlayButton.IsEnabled = true;
-                PlayButton.Content = CreateButtonContent("▶", "main.play");
-                LogText.Text = LocalizationService.F("main.reinstall_done", _currentBuild.DisplayName);
-                AddConsoleLine(LocalizationService.F("main.reinstall_done", _currentBuild.DisplayName));
+                _viewModel.SetStatus(LocalizationService.F("main.reinstall_done", _viewModel.CurrentBuild.DisplayName));
+                AddConsoleLine(LocalizationService.F("main.reinstall_done", _viewModel.CurrentBuild.DisplayName));
             }
             else
             {
-                LogText.Text = wasCancelled
+                _viewModel.SetStatus(wasCancelled
                     ? LocalizationService.T("main.download_cancelled")
-                    : LocalizationService.F("main.reinstall_failed", _currentBuild.DisplayName);
+                    : LocalizationService.F("main.reinstall_failed", _viewModel.CurrentBuild.DisplayName));
                 if (!wasCancelled)
-                    HandleInstallFailure(_currentBuild, wasCancelled);
-                PlayButton.IsEnabled = true;
-                PlayButton.Content = CreateButtonContent("⬇️", "main.download");
+                    HandleInstallFailure(_viewModel.CurrentBuild, wasCancelled);
+                _viewModel.SetTransientPlayButton("⬇️", "main.download");
             }
         }
         catch (Exception ex)
         {
-            LogText.Text = LocalizationService.F("main.error_with_message", ex.Message);
+            _viewModel.SetStatus(LocalizationService.F("main.error_with_message", ex.Message));
             AddConsoleLine(LocalizationService.F("main.error_with_message", ex.Message));
-            if (_currentBuild != null)
-                HandleInstallFailure(_currentBuild, wasCancelled: false);
-            PlayButton.IsEnabled = true;
-            PlayButton.Content = CreateButtonContent("▶", "main.play");
+            if (_viewModel.CurrentBuild != null)
+                HandleInstallFailure(_viewModel.CurrentBuild, wasCancelled: false);
         }
         finally
         {
-            _isDownloading = false;
+            _viewModel.IsDownloading = false;
             CheckSelectedBuildInstalled();
         }
     }
@@ -856,7 +872,6 @@ public partial class MainWindow : Window, ILocalizable
         PlayButton.Foreground = Brushes.White;
         DownloadProgress.Foreground = _themeService.ProgressForegroundBrush;
         DownloadProgress.Background = _themeService.ProgressBackgroundBrush;
-        ProgressText.Foreground = _themeService.SecondaryTextBrush;
         ThemeIcon.Text = _themeService.ThemeIcon;
         ThemeToggle.ToolTip = LocalizationService.T(_themeService.ThemeTooltipKey);
     }
@@ -923,7 +938,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             _authInProgress = false;
             SetProfileState(true, username);
-            LogText.Text = LocalizationService.F("main.auth_success_status", username);
+            _viewModel.SetStatus(LocalizationService.F("main.auth_success_status", username));
             AddConsoleLine(LocalizationService.F("main.auth_welcome", username));
             AddConsoleLine(LocalizationService.F("main.auth_uuid", uuid));
             _ = LoadSkinAsync(uuid);
@@ -935,7 +950,7 @@ public partial class MainWindow : Window, ILocalizable
         Dispatcher.Invoke(() =>
         {
             _authInProgress = false;
-            LogText.Text = LocalizationService.F("main.error_with_message", error);
+            _viewModel.SetStatus(LocalizationService.F("main.error_with_message", error));
             AddConsoleLine(LocalizationService.F("main.error_with_message", error));
             AuthButton.IsEnabled = true;
         });
@@ -947,7 +962,7 @@ public partial class MainWindow : Window, ILocalizable
         {
             SetProfileState(false);
             SetDefaultSkin();
-            LogText.Text = LocalizationService.T("main.session_expired_status");
+            _viewModel.SetStatus(LocalizationService.T("main.session_expired_status"));
             AddConsoleLine(LocalizationService.T("main.session_expired_console"));
         });
     }
@@ -957,7 +972,7 @@ public partial class MainWindow : Window, ILocalizable
         if (_settings.OfflineOnly || _authInProgress) return;
         AuthButton.IsEnabled = false;
         _authInProgress = true;
-        LogText.Text = LocalizationService.T("main.auth_starting_status");
+        _viewModel.SetStatus(LocalizationService.T("main.auth_starting_status"));
         AddConsoleLine(LocalizationService.T("main.auth_starting_console"));
         
         try
@@ -983,7 +998,7 @@ public partial class MainWindow : Window, ILocalizable
     {
         _auth.Logout();
         SetProfileState(false);
-        LogText.Text = LocalizationService.T("main.logout_done");
+        _viewModel.SetStatus(LocalizationService.T("main.logout_done"));
         AddConsoleLine(LocalizationService.T("main.logout_console"));
         _authInProgress = false;
         SetDefaultSkin();
@@ -1006,8 +1021,8 @@ public partial class MainWindow : Window, ILocalizable
             paragraph.Inlines.Add(run);
             ConsoleRichTextBox.Document.Blocks.Add(paragraph);
 
-            if (_installSession.IsActive)
-                _installSession.RecordLogLine(message);
+            if (_installUi.IsActive)
+                _installUi.RecordLogLine(message);
 
             while (ConsoleRichTextBox.Document.Blocks.Count > MaxConsoleLines)
                 ConsoleRichTextBox.Document.Blocks.Remove(ConsoleRichTextBox.Document.Blocks.FirstBlock);
@@ -1037,41 +1052,30 @@ public partial class MainWindow : Window, ILocalizable
         return parent as T;
     }
     
-    private void SetPlayButton(string icon, string textKey)
-    {
-        PlayButtonIcon.Text = icon + (icon.Length > 1 ? "" : " ");
-        PlayButtonLabel.Text = LocalizationService.T(textKey);
-    }
-
-    private StackPanel CreateButtonContent(string icon, string textKey)
-    {
-        SetPlayButton(icon, textKey);
-        return (StackPanel)PlayButton.Content;
-    }
-
     private void PlayButton_Click(object sender, RoutedEventArgs e) =>
         UiAsync.Run(PlayButton_ClickAsync, Dispatcher);
 
     private async Task PlayButton_ClickAsync()
     {
-        if (_isDownloading) return;
-        PlayButton.IsEnabled = false;
-        _isDownloading = true;
+        if (_viewModel.IsDownloading) return;
+        _viewModel.SetPlayEnabled(false);
+        _viewModel.IsDownloading = true;
 
         try
         {
-            if (_currentBuild == null)
+            var validation = _launcherOrchestrator.ValidateBuild(_viewModel.CurrentBuild);
+            if (validation == PlayValidationResult.NoBuild)
             {
                 MessageBox.Show(LocalizationService.T("main.select_build_launch"), LocalizationService.T("main.launch_title"), MessageBoxButton.OK, MessageBoxImage.Information);
-                LogText.Text = LocalizationService.T("main.no_build_selected_log");
+                _viewModel.SetStatus(LocalizationService.T("main.no_build_selected_log"));
                 RestorePlayButton();
                 return;
             }
 
-            if (!_currentBuild.IsLoaderSupported())
+            if (validation == PlayValidationResult.UnsupportedLoader)
             {
                 MessageBox.Show(
-                    LocalizationService.F("main.loader_unsupported", _currentBuild.Loader),
+                    LocalizationService.F("main.loader_unsupported", _viewModel.CurrentBuild!.Loader),
                     LocalizationService.T("main.launch_title"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -1085,115 +1089,100 @@ public partial class MainWindow : Window, ILocalizable
                 return;
             }
 
-            if (!await EnsureJavaForBuildAsync(_currentBuild))
+            if (!await EnsureJavaForBuildAsync(_viewModel.CurrentBuild!))
             {
                 RestorePlayButton();
                 return;
             }
 
-            if (!BuildInstallService.IsInstalled(_minecraft.MinecraftDir, _currentBuild))
+            if (!_launcherOrchestrator.IsInstalled(_viewModel.CurrentBuild!))
             {
-                PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
+                _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
                 var cancellationToken = BeginDownloadUi();
-                var success = await _buildInstall.InstallAsync(_currentBuild, cancellationToken);
-                var wasCancelled = cancellationToken.IsCancellationRequested;
+                var installResult = await _launcherOrchestrator.InstallIfNeededAsync(_viewModel.CurrentBuild!, cancellationToken);
+                var wasCancelled = installResult == InstallFlowResult.Cancelled;
                 EndDownloadUi();
-                if (!success)
+                if (installResult is InstallFlowResult.Failed or InstallFlowResult.Cancelled)
                 {
-                    LogText.Text = wasCancelled
+                    _viewModel.SetStatus(wasCancelled
                         ? LocalizationService.T("main.download_cancelled")
-                        : LocalizationService.T("main.install_failed_short");
+                        : LocalizationService.T("main.install_failed_short"));
                     if (!wasCancelled)
-                        HandleInstallFailure(_currentBuild, wasCancelled);
-                    PlayButton.IsEnabled = true;
-                    PlayButton.Content = CreateButtonContent("⬇️", "main.download");
-                    _isDownloading = false;
+                        HandleInstallFailure(_viewModel.CurrentBuild!, wasCancelled);
+                    _viewModel.SetTransientPlayButton("⬇️", "main.download");
+                    _viewModel.IsDownloading = false;
                     return;
                 }
             }
 
-            PlayButton.Content = CreateButtonContent("⏳", "main.launching");
+            _viewModel.SetTransientPlayButton("⏳", "main.launching", enabled: false);
 
-            var ram = _currentBuild.ResolveRamGb(_settings.Ram);
+            var preparation = await _launcherOrchestrator.PrepareLaunchAsync(
+                _viewModel.CurrentBuild!,
+                _auth,
+                _settings,
+                OfflineNameTextBox.Text);
 
-            var javaPath = _java.ResolveJavaPath(_currentBuild.MinecraftVersion);
-            if (string.IsNullOrEmpty(javaPath))
+            if (preparation.Result == LaunchPreparationResult.JavaMissing)
             {
-                    MessageBox.Show(
-                        LocalizationService.T("main.java_not_found_launch"),
-                        LocalizationService.T("main.java_not_found_title"),
+                MessageBox.Show(
+                    LocalizationService.T("main.java_not_found_launch"),
+                    LocalizationService.T("main.java_not_found_title"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 RestorePlayButton();
                 return;
             }
 
-            LaunchIdentity identity;
-
-            if (_auth.IsAuthenticated())
+            if (preparation.Result == LaunchPreparationResult.SessionExpired)
             {
-                if (!await _auth.EnsureValidSessionAsync())
-                {
-                    MessageBox.Show(
-                        LocalizationService.T("main.session_expired"),
-                        LocalizationService.T("main.session_expired_title"),
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                    LogText.Text = LocalizationService.T("main.session_expired_status");
-                    AddConsoleLine(LocalizationService.T("main.session_expired_console_short"));
-                    RestorePlayButton();
-                    return;
-                }
-
-                identity = GameLaunchService.CreateOnlineIdentity(
-                    _auth.GetUsername()!,
-                    _auth.GetUUID()!,
-                    _auth.GetAccessToken()!);
-                AddConsoleLine(LocalizationService.F("main.launch_online", identity.Username, ram, _currentBuild.DisplayName));
+                MessageBox.Show(
+                    LocalizationService.T("main.session_expired"),
+                    LocalizationService.T("main.session_expired_title"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                _viewModel.SetStatus(LocalizationService.T("main.session_expired_status"));
+                AddConsoleLine(LocalizationService.T("main.session_expired_console_short"));
+                RestorePlayButton();
+                return;
             }
+
+            var identity = preparation.Identity;
+            var ram = _viewModel.CurrentBuild!.ResolveRamGb(_settings.Ram);
+            if (identity.IsOffline)
+                AddConsoleLine(LocalizationService.F("main.launch_offline", ram, _viewModel.CurrentBuild.DisplayName));
             else
-            {
-                identity = LaunchCoordinator.ResolveOfflineIdentity(_settings, OfflineNameTextBox.Text);
-                AddConsoleLine(LocalizationService.F("main.launch_offline", ram, _currentBuild.DisplayName));
-            }
+                AddConsoleLine(LocalizationService.F("main.launch_online", identity.Username, ram, _viewModel.CurrentBuild.DisplayName));
 
             _mcOutputLines.Clear();
-            _gameProcess = await _versionLauncher.LaunchAsync(
-                _currentBuild,
-                identity.Username,
-                identity.Uuid,
-                identity.AccessToken,
-                ram,
-                javaPath);
+            _gameProcess = await _launcherOrchestrator.LaunchGameAsync(_viewModel.CurrentBuild!, identity, _settings.Ram);
 
             if (_gameProcess != null)
             {
-                LogText.Text = LocalizationService.T("main.game_launched");
+                _viewModel.SetStatus(LocalizationService.T("main.game_launched"));
                 AddConsoleLine(LocalizationService.T("main.game_launched_console"));
-                PlayButton.Content = CreateButtonContent("▶", "main.game_running");
-                PlayButton.IsEnabled = false;
-                var buildName = _currentBuild.DisplayName;
+                _viewModel.SetTransientPlayButton("▶", "main.game_running", enabled: false);
+                var buildName = _viewModel.CurrentBuild.DisplayName;
                 _ = Task.Run(() =>
                 {
                     _gameProcess.WaitForExit();
                     var exitCode = _gameProcess.ExitCode;
                     Dispatcher.Invoke(() =>
                     {
-                        PlayButton.IsEnabled = true;
-                        PlayButton.Content = CreateButtonContent("▶", "main.play");
-                        _isDownloading = false;
+                        _viewModel.IsDownloading = false;
+                        _viewModel.RefreshPlayState(_minecraft.MinecraftDir);
 
                         if (exitCode != 0)
                         {
                             var logPath = _logService.SaveGameLog(buildName, _mcOutputLines);
-                            LogText.Text = LocalizationService.F("main.game_exit_code", exitCode);
+                            _viewModel.SetStatus(LocalizationService.F("main.game_exit_code", exitCode));
                             AddConsoleLine(LocalizationService.F("main.game_exit_code", exitCode));
                             if (!string.IsNullOrEmpty(logPath))
                                 AddConsoleLine(LocalizationService.F("main.log_saved", Path.GetFileName(logPath)));
                         }
                         else
                         {
-                            LogText.Text = LocalizationService.T("main.game_closed");
+                            _viewModel.SetStatus(LocalizationService.T("main.game_closed"));
                             AddConsoleLine(LocalizationService.T("main.game_closed"));
                         }
                     });
@@ -1206,7 +1195,7 @@ public partial class MainWindow : Window, ILocalizable
         }
         catch (Exception ex)
         {
-            LogText.Text = LocalizationService.F("main.error_with_message", ex.Message);
+            _viewModel.SetStatus(LocalizationService.F("main.error_with_message", ex.Message));
             AddConsoleLine(LocalizationService.F("main.error_with_message", ex.Message));
             RestorePlayButton();
         }
@@ -1215,11 +1204,8 @@ public partial class MainWindow : Window, ILocalizable
     private void RestorePlayButton()
     {
         EndDownloadUi();
-        PlayButton.IsEnabled = true;
-        PlayButton.Content = _currentBuild != null && BuildInstallService.IsInstalled(_minecraft.MinecraftDir, _currentBuild)
-            ? CreateButtonContent("▶", "main.play")
-            : CreateButtonContent("⬇️", "main.download");
-        _isDownloading = false;
+        _viewModel.RefreshPlayState(_minecraft.MinecraftDir);
+        _viewModel.IsDownloading = false;
     }
 
     private async Task LoadSkinAsync(string? uuid)

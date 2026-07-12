@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -58,6 +59,31 @@ public class BuildInstallService
 
     public static bool IsValidVersionJar(string jarPath) =>
         File.Exists(jarPath) && new FileInfo(jarPath).Length > 10_000;
+
+    /// <summary>Removes downloaded version folders so a build can be reinstalled.</summary>
+    public static IReadOnlyList<string> ClearInstalledArtifacts(string minecraftDir, BuildInfo build)
+    {
+        var removed = new List<string>();
+        var versionId = build.GetVersionId();
+        var versionDir = Path.Combine(minecraftDir, "versions", versionId);
+        if (Directory.Exists(versionDir))
+        {
+            Directory.Delete(versionDir, recursive: true);
+            removed.Add(versionId);
+        }
+
+        if (build.IsModded)
+        {
+            var mcDir = Path.Combine(minecraftDir, "versions", build.MinecraftVersion);
+            if (Directory.Exists(mcDir))
+            {
+                Directory.Delete(mcDir, recursive: true);
+                removed.Add(build.MinecraftVersion);
+            }
+        }
+
+        return removed;
+    }
 
     public async Task<bool> InstallAsync(BuildInfo build, CancellationToken cancellationToken = default)
     {

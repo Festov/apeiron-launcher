@@ -11,6 +11,7 @@
         ResizeMode="NoResize">
     
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style x:Key="ConsoleRichTextBoxStyle" TargetType="RichTextBox">
             <Setter Property="Background" Value="{DynamicResource SurfaceLightBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource ConsoleTextBrush}"/>
@@ -38,7 +39,10 @@
     
     <Border Background="{DynamicResource BgBrush}" 
             BorderBrush="{DynamicResource BorderBrush}" 
-            BorderThickness="1">
+            BorderThickness="1"
+            AllowDrop="True"
+            DragOver="MainWindow_DragOver"
+            Drop="MainWindow_Drop">
         
         <Grid>
             <Grid.RowDefinitions>
@@ -53,10 +57,16 @@
                     BorderThickness="0,0,0,1"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <Grid Margin="12,0,4,0">
-                    <TextBlock Text="Apeiron Launcher"
-                               FontSize="13" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}"
-                               VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Apeiron Launcher"
+                                   FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        <TextBlock Text="{Binding AppVersionLabel}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="8,1,0,0"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button x:Name="SettingsButton" Style="{StaticResource TitleBarButton}" Click="SettingsButton_Click" ToolTip="{loc:Loc main.settings_tooltip}">
                             <TextBlock Text="⚙" FontSize="13"/>
@@ -95,13 +105,10 @@
                                             Background="{DynamicResource BorderBrush}"
                                             BorderBrush="{DynamicResource BorderBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="8"
+                                            CornerRadius="0"
                                             VerticalAlignment="Center"
                                             HorizontalAlignment="Left"
                                             SnapsToDevicePixels="True">
-                                        <Border.Clip>
-                                            <RectangleGeometry RadiusX="8" RadiusY="8" Rect="0,0,52,52"/>
-                                        </Border.Clip>
                                         <Image x:Name="SkinImage" Stretch="UniformToFill"/>
                                     </Border>
 
@@ -209,27 +216,35 @@
                         <!-- ===== СТАТУС ===== -->
                         <Border x:Name="StatusBorder" Grid.Row="0" Background="{DynamicResource SurfaceLightBrush}" Padding="10" Margin="0,0,0,8" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                             <StackPanel>
-                                <TextBlock x:Name="LogText" Text="Ready" FontSize="14" FontWeight="500" Foreground="#059669"/>
-                                <ProgressBar x:Name="DownloadProgress" Height="4" Background="{DynamicResource BorderBrush}" Foreground="{DynamicResource AccentBrush}" Visibility="Collapsed" Margin="0,8,0,0" BorderThickness="0"/>
+                                <TextBlock x:Name="LogText" Text="{Binding StatusText}" FontSize="14" FontWeight="500" Foreground="#059669"/>
+                                <ProgressBar x:Name="DownloadProgress" Height="4"
+                                             Value="{Binding ProgressValue}" Maximum="100"
+                                             IsIndeterminate="{Binding IsProgressIndeterminate}"
+                                             Background="{DynamicResource BorderBrush}" Foreground="{DynamicResource AccentBrush}"
+                                             Visibility="{Binding IsProgressVisible, Converter={StaticResource BoolToVis}}"
+                                             Margin="0,8,0,0" BorderThickness="0"/>
                                 <Grid Margin="0,6,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="ProgressText" Grid.Column="0"
-                                               Text="" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Visibility="Collapsed" VerticalAlignment="Center"
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding ProgressText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Visibility="{Binding IsProgressVisible, Converter={StaticResource BoolToVis}}"
+                                               VerticalAlignment="Center"
                                                HorizontalAlignment="Left" TextTrimming="CharacterEllipsis"
                                                Margin="0,0,8,0"/>
                                     <Button x:Name="CancelDownloadButton" Grid.Column="1"
                                             Style="{StaticResource OutlinedButton}"
-                                            Content="Cancel" Visibility="Collapsed"
+                                            Content="Cancel"
+                                            Visibility="{Binding IsCancelDownloadVisible, Converter={StaticResource BoolToVis}}"
                                             Padding="8,2" Height="24" FontSize="11"
                                             HorizontalAlignment="Right" VerticalAlignment="Center"
                                             Click="CancelDownload_Click"/>
                                     <Button x:Name="OpenInstallLogButton" Grid.Column="1"
                                             Style="{StaticResource OutlinedButton}"
-                                            Content="Open log" Visibility="Collapsed"
+                                            Content="Open log"
+                                            Visibility="{Binding IsOpenInstallLogVisible, Converter={StaticResource BoolToVis}}"
                                             Padding="8,2" Height="24" FontSize="11"
                                             HorizontalAlignment="Right" VerticalAlignment="Center"
                                             Click="OpenInstallLog_Click"/>
@@ -271,10 +286,10 @@
                         
                         <!-- ===== КНОПКИ ===== -->
                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom">
-                            <Button x:Name="PlayButton" Style="{StaticResource AccentButton}" Click="PlayButton_Click" IsEnabled="False" FontSize="16" Padding="24,12">
+                            <Button x:Name="PlayButton" Style="{StaticResource AccentButton}" Click="PlayButton_Click" IsEnabled="{Binding PlayButtonEnabled}" FontSize="16" Padding="24,12">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="PlayButtonIcon" Text="▶ " FontSize="18"/>
-                                    <TextBlock x:Name="PlayButtonLabel" Text="Play" FontSize="16"/>
+                                    <TextBlock Text="{Binding PlayButtonIcon}" FontSize="18"/>
+                                    <TextBlock Text="{Binding PlayButtonText}" FontSize="16"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>

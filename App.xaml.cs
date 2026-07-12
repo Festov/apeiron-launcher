@@ -13,7 +13,15 @@ public partial class App : Application
         settings.Load();
         LocalizationService.Initialize(settings.Language);
 
-        var mainWindow = new MainWindow(settings);
+        var launchArgs = LaunchArgsParser.Parse(e.Args);
+        if (launchArgs.ShowHelp)
+        {
+            MessageBox.Show(LaunchArgsHelp.GetText(), LaunchArgsHelp.Title, MessageBoxButton.OK, MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
+        var mainWindow = new MainWindow(settings, launchArgs.LaunchTarget);
         mainWindow.Show();
     }
 }

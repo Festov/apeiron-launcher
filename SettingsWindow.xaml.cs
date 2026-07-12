@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -66,10 +65,8 @@ public partial class SettingsWindow : Window, ILocalizable
         };
         SelectLanguage(selected);
 
-        var version = Assembly.GetExecutingAssembly().GetName().Version;
-        VersionText.Text = version != null
-            ? LocalizationService.F("settings.version", $"{version.Major}.{version.Minor}.{version.Build}")
-            : LocalizationService.F("settings.version", "1.2.0");
+        var version = LauncherAppVersion.FullDisplay;
+        VersionText.Text = LocalizationService.F("settings.version", version);
     }
 
     private void SelectLanguage(string code)
@@ -129,9 +126,8 @@ public partial class SettingsWindow : Window, ILocalizable
                 return;
             }
 
-            var message = LocalizationService.F(
-                "settings.update_available",
-                update.LatestVersion,
+            var message = LauncherUpdatePromptHelper.BuildPrompt(
+                update,
                 LauncherUpdateService.GetCurrentVersion());
 
             if (MessageBox.Show(

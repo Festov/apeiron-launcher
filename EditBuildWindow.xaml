@@ -153,6 +153,7 @@
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
                             <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="6,4">
@@ -163,7 +164,12 @@
                                 <Button x:Name="RefreshModsButton" Content="Refresh" Style="{StaticResource DialogOutlinedButton}"
                                         Click="RefreshMods_Click" Margin="6,0,0,0" Padding="8,4" Height="26"/>
                             </StackPanel>
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="4,0,4,4">
+                            <TextBox x:Name="ModSearchTextBox" Grid.Row="1"
+                                     Style="{StaticResource EditTextBox}"
+                                     Margin="6,0,6,4"
+                                     Height="30"
+                                     TextChanged="ModSearchTextBox_TextChanged"/>
+                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="4,0,4,4">
                                 <ItemsControl x:Name="ModsList">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -174,7 +180,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
-                            <TextBlock x:Name="NoModsText" Grid.Row="1"
+                            <TextBlock x:Name="NoModsText" Grid.Row="2"
                                        Text="Нет модов. Перетащите .jar сюда или нажмите «Добавить мод»."
                                        FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8"/>
