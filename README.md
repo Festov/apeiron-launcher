@@ -79,7 +79,8 @@ Java is installed system-wide to `C:\Program Files\Java\` (Oracle JDK), selected
 - Offline play with validated nickname (3–16 chars, `a-z`, `0-9`, `_`)
 - Auto Oracle JDK install per Minecraft version (silent, background)
 - Instance export/import and full backup (mods, config, saves)
-- Modpack import as new instance (zip, including `overrides/`)
+- Modpack import as new instance (zip, including `overrides/`) — button or drag-and-drop
+- CLI: `--launch <instance>` and `--help`
 - Per-instance RAM override (or global default in settings)
 - Launcher auto-update from GitHub Releases (repository embedded at build time)
 - Mod metadata from `fabric.mod.json` / `mods.toml`

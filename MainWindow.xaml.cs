@@ -25,23 +25,26 @@ public partial class MainWindow : Window, ILocalizable
     private readonly LoaderService _loader;
     private readonly BuildInstallService _buildInstall;
     private readonly VersionLauncher _versionLauncher;
+    private readonly PlayOrchestrator _playOrchestrator;
     private readonly SkinService _skinService;
     private readonly ThemeService _themeService = new();
     private readonly List<string> _mcOutputLines = new();
-    private readonly InstallSession _installSession = new();
+    private readonly InstallUiCoordinator _installUi = new();
     private string? _lastInstallLogPath;
     private Process? _gameProcess;
     private bool _authInProgress = false;
     private bool _isDownloading = false;
     private bool _isDarkTheme = false;
     private BuildInfo? _currentBuild = null;
+    private readonly string? _pendingLaunchTarget;
     private const int MaxConsoleLines = 500;
     
-    public MainWindow(SettingsService settings)
+    public MainWindow(SettingsService settings, string? launchTarget = null)
     {
         InitializeComponent();
 
         _settings = settings;
+        _pendingLaunchTarget = launchTarget;
         _logService = new LogService();
         _minecraft = new MinecraftService(_settings.GetMinecraftDir());
         _java = new JavaService();
@@ -49,6 +52,7 @@ public partial class MainWindow : Window, ILocalizable
         _loader = new LoaderService(_minecraft.MinecraftDir);
         _buildInstall = new BuildInstallService(_minecraft, _loader);
         _versionLauncher = new VersionLauncher(_minecraft.MinecraftDir);
+        _playOrchestrator = new PlayOrchestrator(_minecraft, _buildInstall, _versionLauncher, _java);
         _skinService = new SkinService(_minecraft.MinecraftDir);
         
         _auth.OnAuthSuccess += OnAuthSuccess!;
@@ -141,6 +145,7 @@ public partial class MainWindow : Window, ILocalizable
             ApplyOfflineOnlyMode();
             if (_settings.CheckForUpdates && LauncherMetadata.HasUpdateSource)
                 _ = CheckForUpdatesOnStartupAsync();
+            TryQuickLaunchFromArgs();
         };
         Closed += (_, _) => LocalizationService.Instance.LanguageChanged -= OnLanguageChanged;
     }
@@ -363,12 +368,13 @@ public partial class MainWindow : Window, ILocalizable
 
     private void UpdateDownloadProgress(int progress, string text, bool lockPlayButton = false)
     {
+        var update = DownloadProgressHelper.CreateUpdate(progress, text);
         DownloadProgress.Visibility = Visibility.Visible;
         ProgressText.Visibility = Visibility.Visible;
-        if (progress >= 0)
-            DownloadProgress.Value = Math.Clamp(progress, 0, 100);
-        if (!string.IsNullOrEmpty(text))
-            ProgressText.Text = text;
+        if (update.UpdateBarValue)
+            DownloadProgress.Value = update.BarValue;
+        if (!string.IsNullOrEmpty(update.StatusText))
+            ProgressText.Text = update.StatusText;
 
         if (lockPlayButton)
         {
@@ -424,7 +430,7 @@ public partial class MainWindow : Window, ILocalizable
 
     private void CancelDownload_Click(object sender, RoutedEventArgs e)
     {
-        _installSession.Cancel();
+        _installUi.CancelDownload();
         AddConsoleLine(LocalizationService.T("main.download_cancelled"));
     }
 
@@ -435,12 +441,12 @@ public partial class MainWindow : Window, ILocalizable
         CancelDownloadButton.Visibility = Visibility.Visible;
         DownloadProgress.Visibility = Visibility.Visible;
         ProgressText.Visibility = Visibility.Visible;
-        return _installSession.Begin();
+        return _installUi.BeginDownload();
     }
 
     private void EndDownloadUi()
     {
-        _installSession.End();
+        _installUi.EndDownload();
         CancelDownloadButton.Visibility = Visibility.Collapsed;
         DownloadProgress.Visibility = Visibility.Collapsed;
         ProgressText.Visibility = Visibility.Collapsed;
@@ -453,7 +459,7 @@ public partial class MainWindow : Window, ILocalizable
         if (wasCancelled)
             return;
 
-        var logPath = _installSession.SaveFailureLog(build.DisplayName, _logService);
+        var logPath = _installUi.SaveInstallFailureLog(build.DisplayName, _logService, wasCancelled);
         if (string.IsNullOrEmpty(logPath))
             return;
 
@@ -530,6 +536,34 @@ public partial class MainWindow : Window, ILocalizable
         CheckSelectedBuildInstalled();
     }
 
+    private bool TrySelectBuildByIdOrName(string key)
+    {
+        var build = BuildListHelper.FindByIdOrName(BuildsComboBox.Items.OfType<BuildInfo>(), key);
+        if (build == null)
+            return false;
+
+        BuildsComboBox.SelectedItem = build;
+        _currentBuild = build;
+        CheckSelectedBuildInstalled();
+        return true;
+    }
+
+    private void TryQuickLaunchFromArgs()
+    {
+        if (string.IsNullOrWhiteSpace(_pendingLaunchTarget))
+            return;
+
+        var target = _pendingLaunchTarget;
+        if (!TrySelectBuildByIdOrName(target))
+        {
+            AddConsoleLine(LocalizationService.F("main.cli_build_not_found", target));
+            return;
+        }
+
+        AddConsoleLine(LocalizationService.F("main.cli_launch", _currentBuild!.DisplayName));
+        UiAsync.Run(PlayButton_ClickAsync, Dispatcher);
+    }
+
     private void BuildsComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (BuildsComboBox.SelectedItem == null) return;
@@ -579,33 +613,7 @@ public partial class MainWindow : Window, ILocalizable
             if (dialog.ShowDialog() != true)
                 return;
 
-            var instancesRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "instances");
-            Directory.CreateDirectory(instancesRoot);
-            var build = ModpackImportService.ImportAsNewInstance(dialog.FileName, instancesRoot);
-
-            _buildManager.AddBuild(build);
-
-            if (BuildsComboBox.Items.Count == 1 && BuildsComboBox.Items[0] is string)
-            {
-                BuildsComboBox.Items.Clear();
-            }
-
-            BuildsComboBox.IsEnabled = true;
-            BuildsComboBox.Items.Add(build);
-            BuildsComboBox.SelectedIndex = BuildsComboBox.Items.Count - 1;
-            _currentBuild = build;
-
-            AddConsoleLine(LocalizationService.F("main.modpack_imported", build.DisplayName));
-            if (string.IsNullOrWhiteSpace(build.MinecraftVersion))
-            {
-                MessageBox.Show(
-                    LocalizationService.T("main.modpack_configure_hint"),
-                    LocalizationService.T("main.import_modpack_tooltip"),
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-            }
-
-            CheckSelectedBuildInstalled();
+            ImportModpackFromZip(dialog.FileName);
         }
         catch (InvalidOperationException ex)
         {
@@ -616,6 +624,70 @@ public partial class MainWindow : Window, ILocalizable
             AddConsoleLine(LocalizationService.F("main.create_build_error", ex.Message));
             MessageBox.Show(ex.Message, LocalizationService.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private void MainWindow_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void MainWindow_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] files)
+            return;
+
+        var zipFiles = FileDropHelper.GetZipFiles(files);
+        if (zipFiles.Count == 0)
+        {
+            AddConsoleLine(LocalizationService.T("main.modpack_drop_invalid"));
+            return;
+        }
+
+        foreach (var zipPath in zipFiles)
+        {
+            try
+            {
+                ImportModpackFromZip(zipPath);
+            }
+            catch (InvalidOperationException ex)
+            {
+                AddConsoleLine(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                AddConsoleLine(LocalizationService.F("main.create_build_error", ex.Message));
+            }
+        }
+    }
+
+    private void ImportModpackFromZip(string zipPath)
+    {
+        var instancesRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "instances");
+        Directory.CreateDirectory(instancesRoot);
+        var build = ModpackImportService.ImportAsNewInstance(zipPath, instancesRoot);
+
+        _buildManager.AddBuild(build);
+
+        if (BuildsComboBox.Items.Count == 1 && BuildsComboBox.Items[0] is string)
+            BuildsComboBox.Items.Clear();
+
+        BuildsComboBox.IsEnabled = true;
+        BuildsComboBox.Items.Add(build);
+        BuildsComboBox.SelectedIndex = BuildsComboBox.Items.Count - 1;
+        _currentBuild = build;
+
+        AddConsoleLine(LocalizationService.F("main.modpack_imported", build.DisplayName));
+        if (string.IsNullOrWhiteSpace(build.MinecraftVersion))
+        {
+            MessageBox.Show(
+                LocalizationService.T("main.modpack_configure_hint"),
+                LocalizationService.T("main.import_modpack_tooltip"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        CheckSelectedBuildInstalled();
     }
 
     private void AddBuild_Click(object sender, RoutedEventArgs e)
@@ -740,23 +812,11 @@ public partial class MainWindow : Window, ILocalizable
 
         try
         {
-            var versionId = _currentBuild.GetVersionId();
-            var versionDir = Path.Combine(_minecraft.MinecraftDir, "versions", versionId);
-            if (Directory.Exists(versionDir))
-            {
-                Directory.Delete(versionDir, true);
-                AddConsoleLine(LocalizationService.F("main.profile_deleted", versionId));
-            }
-
-            if (_currentBuild.IsModded)
-            {
-                var mcDir = Path.Combine(_minecraft.MinecraftDir, "versions", _currentBuild.MinecraftVersion);
-                if (Directory.Exists(mcDir))
-                {
-                    Directory.Delete(mcDir, true);
-                    AddConsoleLine(LocalizationService.F("main.base_deleted", _currentBuild.MinecraftVersion));
-                }
-            }
+            var removed = BuildInstallService.ClearInstalledArtifacts(_minecraft.MinecraftDir, _currentBuild);
+            foreach (var id in removed)
+                AddConsoleLine(LocalizationService.F(
+                    id == _currentBuild.GetVersionId() ? "main.profile_deleted" : "main.base_deleted",
+                    id));
 
             PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
             var cancellationToken = BeginDownloadUi();
@@ -1006,8 +1066,8 @@ public partial class MainWindow : Window, ILocalizable
             paragraph.Inlines.Add(run);
             ConsoleRichTextBox.Document.Blocks.Add(paragraph);
 
-            if (_installSession.IsActive)
-                _installSession.RecordLogLine(message);
+            if (_installUi.IsActive)
+                _installUi.RecordLogLine(message);
 
             while (ConsoleRichTextBox.Document.Blocks.Count > MaxConsoleLines)
                 ConsoleRichTextBox.Document.Blocks.Remove(ConsoleRichTextBox.Document.Blocks.FirstBlock);
@@ -1091,14 +1151,14 @@ public partial class MainWindow : Window, ILocalizable
                 return;
             }
 
-            if (!BuildInstallService.IsInstalled(_minecraft.MinecraftDir, _currentBuild))
+            if (!_playOrchestrator.IsInstalled(_currentBuild))
             {
                 PlayButton.Content = CreateButtonContent("⏳", "main.downloading");
                 var cancellationToken = BeginDownloadUi();
-                var success = await _buildInstall.InstallAsync(_currentBuild, cancellationToken);
-                var wasCancelled = cancellationToken.IsCancellationRequested;
+                var installResult = await _playOrchestrator.InstallIfNeededAsync(_currentBuild, cancellationToken);
+                var wasCancelled = installResult == InstallFlowResult.Cancelled;
                 EndDownloadUi();
-                if (!success)
+                if (installResult is InstallFlowResult.Failed or InstallFlowResult.Cancelled)
                 {
                     LogText.Text = wasCancelled
                         ? LocalizationService.T("main.download_cancelled")
@@ -1114,57 +1174,40 @@ public partial class MainWindow : Window, ILocalizable
 
             PlayButton.Content = CreateButtonContent("⏳", "main.launching");
 
-            var ram = _currentBuild.ResolveRamGb(_settings.Ram);
-
-            var javaPath = _java.ResolveJavaPath(_currentBuild.MinecraftVersion);
-            if (string.IsNullOrEmpty(javaPath))
+            if (string.IsNullOrEmpty(_playOrchestrator.ResolveJavaPath(_currentBuild)))
             {
-                    MessageBox.Show(
-                        LocalizationService.T("main.java_not_found_launch"),
-                        LocalizationService.T("main.java_not_found_title"),
+                MessageBox.Show(
+                    LocalizationService.T("main.java_not_found_launch"),
+                    LocalizationService.T("main.java_not_found_title"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 RestorePlayButton();
                 return;
             }
 
-            LaunchIdentity identity;
-
-            if (_auth.IsAuthenticated())
+            var resolution = await LaunchCoordinator.ResolveLaunchIdentityAsync(_auth, _settings, OfflineNameTextBox.Text);
+            if (resolution.Status == LaunchIdentityStatus.SessionExpired)
             {
-                if (!await _auth.EnsureValidSessionAsync())
-                {
-                    MessageBox.Show(
-                        LocalizationService.T("main.session_expired"),
-                        LocalizationService.T("main.session_expired_title"),
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                    LogText.Text = LocalizationService.T("main.session_expired_status");
-                    AddConsoleLine(LocalizationService.T("main.session_expired_console_short"));
-                    RestorePlayButton();
-                    return;
-                }
-
-                identity = GameLaunchService.CreateOnlineIdentity(
-                    _auth.GetUsername()!,
-                    _auth.GetUUID()!,
-                    _auth.GetAccessToken()!);
-                AddConsoleLine(LocalizationService.F("main.launch_online", identity.Username, ram, _currentBuild.DisplayName));
+                MessageBox.Show(
+                    LocalizationService.T("main.session_expired"),
+                    LocalizationService.T("main.session_expired_title"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                LogText.Text = LocalizationService.T("main.session_expired_status");
+                AddConsoleLine(LocalizationService.T("main.session_expired_console_short"));
+                RestorePlayButton();
+                return;
             }
-            else
-            {
-                identity = LaunchCoordinator.ResolveOfflineIdentity(_settings, OfflineNameTextBox.Text);
+
+            var identity = resolution.Identity;
+            var ram = _currentBuild.ResolveRamGb(_settings.Ram);
+            if (identity.IsOffline)
                 AddConsoleLine(LocalizationService.F("main.launch_offline", ram, _currentBuild.DisplayName));
-            }
+            else
+                AddConsoleLine(LocalizationService.F("main.launch_online", identity.Username, ram, _currentBuild.DisplayName));
 
             _mcOutputLines.Clear();
-            _gameProcess = await _versionLauncher.LaunchAsync(
-                _currentBuild,
-                identity.Username,
-                identity.Uuid,
-                identity.AccessToken,
-                ram,
-                javaPath);
+            _gameProcess = await _playOrchestrator.LaunchGameAsync(_currentBuild, identity, _settings.Ram);
 
             if (_gameProcess != null)
             {

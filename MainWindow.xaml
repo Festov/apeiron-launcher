@@ -38,7 +38,10 @@
     
     <Border Background="{DynamicResource BgBrush}" 
             BorderBrush="{DynamicResource BorderBrush}" 
-            BorderThickness="1">
+            BorderThickness="1"
+            AllowDrop="True"
+            DragOver="MainWindow_DragOver"
+            Drop="MainWindow_Drop">
         
         <Grid>
             <Grid.RowDefinitions>

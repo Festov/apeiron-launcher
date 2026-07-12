@@ -12,9 +12,9 @@ public class BuildManager
     private readonly string _configPath;
     private List<BuildInfo> _builds = new();
 
-    public BuildManager()
+    public BuildManager(string? launcherDir = null)
     {
-        _launcherDir = AppDomain.CurrentDomain.BaseDirectory;
+        _launcherDir = launcherDir ?? AppDomain.CurrentDomain.BaseDirectory;
         var configDir = Path.Combine(_launcherDir, "config");
         Directory.CreateDirectory(configDir);
         _configPath = Path.Combine(configDir, "builds.json");

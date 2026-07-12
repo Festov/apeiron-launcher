@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Collections.Generic;
@@ -17,6 +19,7 @@ public class MinecraftService
     public string MinecraftDir { get; }
     private readonly string _versionsDir;
     private readonly string _librariesDir;
+    private readonly ManifestCache _manifestCache;
 
     private const int MAX_RETRY = 3;
 
@@ -31,6 +34,7 @@ public class MinecraftService
             : minecraftDir.Trim();
         _versionsDir = Path.Combine(MinecraftDir, "versions");
         _librariesDir = Path.Combine(MinecraftDir, "libraries");
+        _manifestCache = new ManifestCache(MinecraftDir);
 
         Directory.CreateDirectory(MinecraftDir);
         Directory.CreateDirectory(_versionsDir);
@@ -61,8 +65,7 @@ public class MinecraftService
             }
 
             Log?.Invoke(LocalizationService.T("log.mc.downloading_manifest"));
-            var manifestUrl = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
-            var manifestJson = await AppHttp.Client.GetStringAsync(manifestUrl);
+            var manifestJson = await _manifestCache.GetOrFetchAsync(cancellationToken);
             var manifest = JObject.Parse(manifestJson);
 
             var versionEntry = manifest["versions"]?
@@ -82,7 +85,7 @@ public class MinecraftService
             }
 
             Log?.Invoke(LocalizationService.F("log.mc.downloading_version_json", version));
-            var versionJson = await AppHttp.Client.GetStringAsync(versionUrl);
+            var versionJson = await HttpRetryHelper.GetStringAsync(AppHttp.Client, versionUrl, cancellationToken);
             var versionData = JObject.Parse(versionJson);
 
             await File.WriteAllTextAsync(versionJsonTempPath, versionJson, cancellationToken);
@@ -360,8 +363,7 @@ public class MinecraftService
         {
             try
             {
-                var manifestUrl = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
-                var manifestJson = await AppHttp.Client.GetStringAsync(manifestUrl);
+                var manifestJson = await _manifestCache.GetOrFetchAsync();
                 var manifest = JObject.Parse(manifestJson);
                 
                 var versionEntry = manifest["versions"]?
@@ -380,7 +382,7 @@ public class MinecraftService
                     return;
                 }
                 
-                var versionJson = await AppHttp.Client.GetStringAsync(versionUrl);
+                var versionJson = await HttpRetryHelper.GetStringAsync(AppHttp.Client, versionUrl);
                 var versionData = JObject.Parse(versionJson);
                 
                 var assetIndex = versionData["assetIndex"];
@@ -523,15 +525,31 @@ public class MinecraftService
 
     private async Task DownloadFile(string url, string path, CancellationToken cancellationToken = default)
     {
-        using var response = await AppHttp.Client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        var existingBytes = DownloadResumeHelper.GetExistingBytes(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        using var request = DownloadResumeHelper.CreateRequest(url, existingBytes);
+        using var response = await AppHttp.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable && existingBytes > 0)
+            return;
+
+        if (DownloadResumeHelper.ShouldRestartDownload(response.StatusCode, existingBytes))
+            existingBytes = 0;
+
         response.EnsureSuccessStatusCode();
 
-        var total = response.Content.Headers.ContentLength ?? -1;
-        var downloaded = 0L;
+        var append = DownloadResumeHelper.ShouldAppendToExistingFile(response.StatusCode, existingBytes);
+        var downloadedInSession = 0L;
         var buffer = new byte[8192];
 
-        using var stream = await response.Content.ReadAsStreamAsync();
-        using var fileStream = File.Create(path);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var fileStream = append
+            ? new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None)
+            : File.Create(path);
+
+        if (append)
+            fileStream.Seek(0, SeekOrigin.End);
 
         while (true)
         {
@@ -539,11 +557,12 @@ public class MinecraftService
             if (read == 0) break;
 
             await fileStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-            downloaded += read;
+            downloadedInSession += read;
 
+            var total = DownloadResumeHelper.ResolveTotalBytes(response, existingBytes, downloadedInSession);
             if (total > 0)
             {
-                var progress = (int)((double)downloaded / total * 100);
+                var progress = (int)((double)(existingBytes + downloadedInSession) / total * 100);
                 ProgressChanged?.Invoke(progress, LocalizationService.F("log.download_file", Path.GetFileName(path)));
             }
         }

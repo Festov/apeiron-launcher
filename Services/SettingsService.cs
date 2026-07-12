@@ -17,9 +17,9 @@ public class SettingsService
     public bool OfflineOnly { get; set; }
     public bool CheckForUpdates { get; set; } = true;
 
-    public SettingsService()
+    public SettingsService(string? launcherDir = null)
     {
-        _launcherDir = AppDomain.CurrentDomain.BaseDirectory;
+        _launcherDir = launcherDir ?? AppDomain.CurrentDomain.BaseDirectory;
         var configDir = Path.Combine(_launcherDir, "config");
         Directory.CreateDirectory(configDir);
         _settingsPath = Path.Combine(configDir, "settings.json");

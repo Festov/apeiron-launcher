@@ -97,7 +97,7 @@ public class ModManager
 
     private static string? MatchTomlValue(string text, string key)
     {
-        var match = Regex.Match(text, $@"{key}\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+        var match = Regex.Match(text, $@"(?<![\w]){Regex.Escape(key)}\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
         return match.Success ? match.Groups[1].Value : null;
     }
 
