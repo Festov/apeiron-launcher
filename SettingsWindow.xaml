@@ -9,97 +9,70 @@
         ResizeMode="NoResize"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
-        Background="{DynamicResource SurfaceBrush}"
+        Background="Transparent"
         WindowStyle="None"
-        AllowsTransparency="False">
+        AllowsTransparency="True"
+        FontFamily="Segoe UI">
 
     <Window.Resources>
-        <Style x:Key="SettingsTextBox" TargetType="TextBox">
-            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="MinHeight" Value="32"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-        </Style>
-
         <Style x:Key="SettingsComboBox" TargetType="ComboBox" BasedOn="{StaticResource LauncherComboBox}">
-            <Setter Property="Height" Value="34"/>
-        </Style>
-
-        <Style x:Key="FieldLabel" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="0,0,8,0"/>
-        </Style>
-
-        <Style x:Key="DialogOutlinedButton" TargetType="Button" BasedOn="{StaticResource OutlinedButton}">
-            <Setter Property="Padding" Value="10,5"/>
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
-
-        <Style x:Key="DialogAccentButton" TargetType="Button" BasedOn="{StaticResource AccentButton}">
-            <Setter Property="Padding" Value="12,5"/>
-            <Setter Property="MinWidth" Value="80"/>
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
-
-        <Style x:Key="DialogCloseButton" TargetType="Button" BasedOn="{StaticResource WindowControlButton}">
-            <Setter Property="Width" Value="28"/>
-            <Setter Property="Height" Value="28"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="MinWidth" Value="200"/>
         </Style>
     </Window.Resources>
 
-    <Border Background="{DynamicResource SurfaceBrush}"
+    <Border x:Name="DialogChrome"
+            Background="{DynamicResource SurfaceBrush}"
             BorderBrush="{DynamicResource BorderBrush}"
             BorderThickness="1"
-            SnapsToDevicePixels="True"
-            ClipToBounds="True">
+            CornerRadius="14"
+            SnapsToDevicePixels="True">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="34"/>
+                <RowDefinition Height="44"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <Border Grid.Row="0"
-                    Background="{DynamicResource SurfaceBrush}"
+                    Background="{DynamicResource SurfaceLightBrush}"
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="0,0,0,1"
+                    CornerRadius="14,14,0,0"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid Margin="12,0,4,0">
-                    <TextBlock x:Name="TitleText"
-                               Text="Settings"
-                               FontSize="13" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}"
-                               VerticalAlignment="Center"/>
+                <Grid Margin="16,0,8,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="6" Height="6" CornerRadius="3"
+                                Background="{DynamicResource AccentBrush}"
+                                Margin="0,0,10,0"/>
+                        <TextBlock x:Name="TitleText"
+                                   Text="Settings"
+                                   FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Button Style="{StaticResource DialogCloseButton}"
                             Content="✕" HorizontalAlignment="Right"
                             Click="CancelButton_Click"/>
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="1" Margin="12,10,12,12">
+            <StackPanel Grid.Row="1" Margin="18,16,18,18">
 
-                <Grid Margin="0,0,0,8">
+                <Grid Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="120"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="RamLabel" Grid.Column="0" Text="RAM (GB)" Style="{StaticResource FieldLabel}"/>
-                    <TextBox x:Name="RamTextBox" Grid.Column="1" Style="{StaticResource SettingsTextBox}" Width="60" HorizontalAlignment="Left" TabIndex="1"/>
+                    <TextBox x:Name="RamTextBox" Grid.Column="1"
+                             Style="{StaticResource LauncherNumericTextBox}"
+                             HorizontalAlignment="Left"
+                             TabIndex="1"/>
                 </Grid>
 
-                <Grid Margin="0,0,0,8">
+                <Grid Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="120"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="LanguageLabel" Grid.Column="0" Text="Language" Style="{StaticResource FieldLabel}"/>
@@ -109,27 +82,23 @@
                               ItemContainerStyle="{StaticResource LauncherComboBoxItem}"
                               DisplayMemberPath="Display"
                               SelectedValuePath="Code"
-                              HorizontalAlignment="Left" MinWidth="180"/>
+                              HorizontalAlignment="Left"/>
                 </Grid>
 
-                <CheckBox x:Name="OfflineOnlyCheckBox" Style="{StaticResource LauncherCheckBox}"
-                          Margin="0,0,0,8" TabIndex="3"
-                          Content="Offline mode only"/>
-
                 <CheckBox x:Name="CheckForUpdatesCheckBox" Style="{StaticResource LauncherCheckBox}"
-                          Margin="0,0,0,8" TabIndex="4"
+                          Margin="0,0,0,14" TabIndex="3"
                           Content="Check for updates on startup"/>
 
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
                     <Button x:Name="OpenLogsButton" Content="Open logs" Style="{StaticResource DialogOutlinedButton}" Click="OpenLogs_Click"/>
                     <Button x:Name="CheckUpdatesButton" Content="Check updates" Style="{StaticResource DialogOutlinedButton}"
                             Margin="8,0,0,0" Click="CheckUpdates_Click"/>
                 </StackPanel>
 
                 <TextBlock x:Name="VersionText"
-                           FontSize="10"
+                           FontSize="11"
                            Foreground="{DynamicResource TextMutedBrush}"
-                           Margin="0,0,0,10"/>
+                           Margin="0,0,0,14"/>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="CancelBtn" Content="Cancel" Style="{StaticResource DialogOutlinedButton}" Click="CancelButton_Click"/>

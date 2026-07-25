@@ -27,6 +27,7 @@ public partial class EditBuildWindow : Window, ILocalizable
     {
         InitializeComponent();
         Owner = Application.Current.MainWindow;
+        RoundedDialogChrome.Attach(DialogChrome);
         _build = build;
         _settings = settings;
 

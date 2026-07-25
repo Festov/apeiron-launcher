@@ -31,13 +31,12 @@ public class BuildUiStateTests
     }
 
     [Theory]
-    [InlineData(PlayButtonMode.Play, "▶", "main.play")]
-    [InlineData(PlayButtonMode.Download, "⬇️", "main.download")]
-    public void GetPlayButtonContent_maps_mode_to_icon_and_key(PlayButtonMode mode, string icon, string key)
+    [InlineData(PlayButtonMode.Play, "main.play")]
+    [InlineData(PlayButtonMode.Download, "main.download")]
+    [InlineData(PlayButtonMode.NoBuilds, "main.no_builds_short")]
+    public void GetPlayButtonLocalizationKey_maps_mode_to_key(PlayButtonMode mode, string key)
     {
-        var content = BuildUiState.GetPlayButtonContent(mode);
-        Assert.Equal(icon, content.Icon);
-        Assert.Equal(key, content.LocalizationKey);
+        Assert.Equal(key, BuildUiState.GetPlayButtonLocalizationKey(mode));
     }
 
     [Fact]

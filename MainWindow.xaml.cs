@@ -35,8 +35,8 @@ public partial class MainWindow : Window, ILocalizable
     private string? _lastInstallLogPath;
     private Process? _gameProcess;
     private bool _authInProgress = false;
+    private bool _suppressAccountComboEvent;
     private readonly MainViewModel _viewModel = new();
-    private bool _isDarkTheme = false;
     private readonly string? _pendingLaunchTarget;
     private const int MaxConsoleLines = 500;
     
@@ -61,6 +61,14 @@ public partial class MainWindow : Window, ILocalizable
         _auth.OnAuthSuccess += OnAuthSuccess!;
         _auth.OnAuthError += OnAuthError!;
         _auth.OnSessionExpired += OnSessionExpired!;
+        _auth.OnAccountsChanged += () => Dispatcher.Invoke(() =>
+        {
+            RefreshAccountSwitcher();
+            if (_auth.IsAuthenticated())
+                SetProfileState(true, _auth.GetUsername());
+            else if (!_settings.OfflineOnly)
+                SetProfileState(false);
+        });
         
         _buildInstall.ProgressChanged += (p, t) =>
             Dispatcher.Invoke(() => UpdateDownloadProgress(p, t, lockPlayButton: true));
@@ -112,28 +120,31 @@ public partial class MainWindow : Window, ILocalizable
         if (!_settings.OfflineOnly && _auth.LoadSavedAuth())
         {
             var username = _auth.GetUsername();
-            var uuid = _auth.GetUUID();
             SetProfileState(true, username);
             AddConsoleLine(LocalizationService.F("main.auth_restored", username ?? ""));
-            _ = LoadSkinAsync(uuid);
+            ApplyLocalSkinAvatar();
 
             _ = Task.Run(async () =>
             {
                 if (!await _auth.EnsureValidSessionAsync())
                 {
-                    Dispatcher.Invoke(() =>
+                    await Dispatcher.InvokeAsync(() =>
                     {
                         SetProfileState(false);
                         _viewModel.SetStatus(LocalizationService.T("main.session_expired_status"));
                         AddConsoleLine(LocalizationService.T("main.session_expired_console"));
+                        _ = RefreshAvatarAsync();
                     });
+                    return;
                 }
+
+                await RefreshAvatarAsync();
             });
         }
         else
         {
             SetProfileState(false);
-            SetDefaultSkin();
+            _ = RefreshAvatarAsync();
         }
         
         LoadThemeSetting();
@@ -192,7 +203,9 @@ public partial class MainWindow : Window, ILocalizable
         Title = LocalizationService.T("main.window_title");
         BuildsHeaderText.Text = LocalizationService.T("main.builds");
         ConsoleHeaderText.Text = LocalizationService.T("main.console");
-        AuthButtonText.Text = LocalizationService.T("main.login_microsoft");
+        AuthButtonText.Text = _auth.IsAuthenticated()
+            ? LocalizationService.T("main.add_account")
+            : LocalizationService.T("main.login_microsoft");
         LogoutButtonText.Text = LocalizationService.T("main.logout");
         OfflineNameLabel.Text = LocalizationService.T("main.offline_name");
         if (OfflineNameHintText != null)
@@ -202,29 +215,27 @@ public partial class MainWindow : Window, ILocalizable
         UpdateOfflineNameFeedback();
         CancelDownloadButton.Content = LocalizationService.T("main.cancel_download");
         OpenInstallLogButton.Content = LocalizationService.T("main.open_install_log");
+        AddBuildButton.Content = LocalizationService.T("main.add_build_button");
+        ImportModpackButton.Content = LocalizationService.T("main.import_modpack_button");
+        EditBuildButton.Content = LocalizationService.T("main.edit_build_button");
 
         if (_auth.IsAuthenticated())
             SetProfileState(true, _auth.GetUsername());
         else
             SetProfileState(false);
 
+        RefreshAccountSwitcher();
         RefreshStatusText();
         var selectedId = _viewModel.CurrentBuild?.Id;
         LoadBuilds();
         if (!string.IsNullOrEmpty(selectedId))
             SelectBuildInCombo(selectedId);
 
-        UpdateThemeTooltip();
     }
 
     private void RefreshStatusText() =>
         _viewModel.RefreshLocalizedText(_minecraft.MinecraftDir);
 
-    private void UpdateThemeTooltip()
-    {
-        ThemeToggle.ToolTip = LocalizationService.T(_isDarkTheme ? "main.theme_light" : "main.theme_dark");
-    }
-    
     private void SetProfileState(bool isLoggedIn, string? username = null)
     {
         if (_settings.OfflineOnly)
@@ -237,7 +248,8 @@ public partial class MainWindow : Window, ILocalizable
         {
             UserInfoText.Text = username;
             UserStatusText.Text = LocalizationService.T("main.microsoft_account");
-            AuthButton.Visibility = Visibility.Collapsed;
+            AuthButton.Visibility = Visibility.Visible;
+            AuthButtonText.Text = LocalizationService.T("main.add_account");
             LogoutButton.Visibility = Visibility.Visible;
             OfflineNameRow.Visibility = Visibility.Collapsed;
         }
@@ -247,12 +259,72 @@ public partial class MainWindow : Window, ILocalizable
             UserInfoText.Text = offlineName;
             UserStatusText.Text = LocalizationService.T("main.login_prompt");
             AuthButton.Visibility = Visibility.Visible;
+            AuthButtonText.Text = LocalizationService.T("main.login_microsoft");
             LogoutButton.Visibility = Visibility.Collapsed;
             OfflineNameRow.Visibility = Visibility.Visible;
             if (string.IsNullOrWhiteSpace(OfflineNameTextBox.Text))
                 OfflineNameTextBox.Text = offlineName;
             UpdateOfflineNameFeedback();
         }
+
+        RefreshAccountSwitcher();
+    }
+
+    private void RefreshAccountSwitcher()
+    {
+        if (AccountComboBox == null)
+            return;
+
+        if (_settings.OfflineOnly)
+        {
+            AccountComboBox.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var accounts = _auth.GetAccounts();
+        _suppressAccountComboEvent = true;
+        try
+        {
+            AccountComboBox.ItemsSource = accounts;
+            AccountComboBox.DisplayMemberPath = nameof(AccountSummary.Username);
+            AccountComboBox.SelectedValuePath = nameof(AccountSummary.Uuid);
+
+            if (accounts.Count == 0)
+            {
+                AccountComboBox.Visibility = Visibility.Collapsed;
+                AccountComboBox.SelectedItem = null;
+                return;
+            }
+
+            AccountComboBox.Visibility = Visibility.Visible;
+            var active = accounts.FirstOrDefault(a => a.IsActive) ?? accounts[0];
+            AccountComboBox.SelectedItem = accounts.FirstOrDefault(a =>
+                string.Equals(a.Uuid, active.Uuid, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            _suppressAccountComboEvent = false;
+        }
+    }
+
+    private void AccountComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressAccountComboEvent || AccountComboBox.SelectedItem is not AccountSummary selected)
+            return;
+
+        var current = _auth.GetUUID();
+        if (string.Equals(
+                (current ?? "").Replace("-", "", StringComparison.Ordinal),
+                (selected.Uuid ?? "").Replace("-", "", StringComparison.Ordinal),
+                StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (!_auth.SwitchAccount(selected.Uuid))
+            return;
+
+        AddConsoleLine(LocalizationService.F("main.account_switched", selected.Username));
+        SetProfileState(true, selected.Username);
+        _ = RefreshAvatarAsync();
     }
 
     private void ApplyOfflineOnlyMode()
@@ -260,10 +332,10 @@ public partial class MainWindow : Window, ILocalizable
         if (!_settings.OfflineOnly)
             return;
 
-        if (_auth.IsAuthenticated())
+        if (_auth.IsAuthenticated() || _auth.GetAccounts().Count > 0)
         {
-            _auth.Logout();
-            SetDefaultSkin();
+            _auth.LogoutAll();
+            _ = RefreshAvatarAsync();
         }
 
         var offlineName = OfflineUsernameHelper.Sanitize(_settings.OfflineUsername);
@@ -271,6 +343,8 @@ public partial class MainWindow : Window, ILocalizable
         UserStatusText.Text = LocalizationService.T("main.offline_only_mode");
         AuthButton.Visibility = Visibility.Collapsed;
         LogoutButton.Visibility = Visibility.Collapsed;
+        if (AccountComboBox != null)
+            AccountComboBox.Visibility = Visibility.Collapsed;
         OfflineNameRow.Visibility = Visibility.Visible;
         if (string.IsNullOrWhiteSpace(OfflineNameTextBox.Text))
             OfflineNameTextBox.Text = offlineName;
@@ -364,7 +438,7 @@ public partial class MainWindow : Window, ILocalizable
         _viewModel.ApplyDownloadProgress(progress, text);
 
         if (lockPlayButton)
-            _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
+            _viewModel.SetTransientPlayButton("main.downloading", enabled: false);
     }
 
     private void SaveOfflineUsername()
@@ -476,7 +550,7 @@ public partial class MainWindow : Window, ILocalizable
             BuildsComboBox.Items.Add(LocalizationService.T("main.no_builds"));
             BuildsComboBox.IsEnabled = false;
             _viewModel.CurrentBuild = null;
-            _viewModel.SetTransientPlayButton("⚠️", "main.no_builds_short", enabled: false);
+            _viewModel.SetTransientPlayButton("main.no_builds_short", enabled: false);
             return;
         }
 
@@ -656,28 +730,26 @@ public partial class MainWindow : Window, ILocalizable
     {
         try
         {
-            var addBuildWindow = new AddBuildWindow(_settings);
-            addBuildWindow.Owner = this;
-            
-            if (addBuildWindow.ShowDialog() == true && addBuildWindow.CreatedBuild != null)
+            var addBuildWindow = new AddBuildWindow(_settings) { Owner = this };
+            using (DialogShade.Begin(this))
             {
-                var build = addBuildWindow.CreatedBuild;
-                
-                _buildManager.AddBuild(build);
-                
-                // Если было сообщение "Нет сборок", удаляем его
-                if (BuildsComboBox.Items.Count == 1 && BuildsComboBox.Items[0] is string)
+                if (addBuildWindow.ShowDialog() == true && addBuildWindow.CreatedBuild != null)
                 {
-                    BuildsComboBox.Items.Clear();
+                    var build = addBuildWindow.CreatedBuild;
+
+                    _buildManager.AddBuild(build);
+
+                    if (BuildsComboBox.Items.Count == 1 && BuildsComboBox.Items[0] is string)
+                        BuildsComboBox.Items.Clear();
+
+                    BuildsComboBox.IsEnabled = true;
+                    BuildsComboBox.Items.Add(build);
+                    BuildsComboBox.SelectedIndex = BuildsComboBox.Items.Count - 1;
+                    _viewModel.CurrentBuild = build;
+
+                    AddConsoleLine(LocalizationService.F("main.build_created", build.DisplayName));
+                    CheckSelectedBuildInstalled();
                 }
-                
-                BuildsComboBox.IsEnabled = true;
-                BuildsComboBox.Items.Add(build);
-                BuildsComboBox.SelectedIndex = BuildsComboBox.Items.Count - 1;
-                _viewModel.CurrentBuild = build;
-                
-                AddConsoleLine(LocalizationService.F("main.build_created", build.DisplayName));
-                CheckSelectedBuildInstalled();
             }
         }
         catch (InvalidOperationException ex)
@@ -702,11 +774,13 @@ public partial class MainWindow : Window, ILocalizable
             return;
         }
 
-        var editWindow = new EditBuildWindow(_viewModel.CurrentBuild, _settings);
-        editWindow.Owner = this;
+        var editWindow = new EditBuildWindow(_viewModel.CurrentBuild, _settings) { Owner = this };
 
-        if (editWindow.ShowDialog() != true)
-            return;
+        using (DialogShade.Begin(this))
+        {
+            if (editWindow.ShowDialog() != true)
+                return;
+        }
 
         try
         {
@@ -767,7 +841,7 @@ public partial class MainWindow : Window, ILocalizable
         if (_viewModel.CurrentBuild == null) return;
 
         _viewModel.IsDownloading = true;
-        _viewModel.SetTransientPlayButton("⏳", "main.reinstalling", enabled: false);
+        _viewModel.SetTransientPlayButton("main.reinstalling", enabled: false);
         _viewModel.SetStatus(LocalizationService.T("main.reinstall_status"));
         AddConsoleLine(LocalizationService.F("main.reinstall_console", _viewModel.CurrentBuild.DisplayName));
 
@@ -779,7 +853,7 @@ public partial class MainWindow : Window, ILocalizable
                     id == _viewModel.CurrentBuild.GetVersionId() ? "main.profile_deleted" : "main.base_deleted",
                     id));
 
-            _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
+            _viewModel.SetTransientPlayButton("main.downloading", enabled: false);
             var cancellationToken = BeginDownloadUi();
             var installResult = await _launcherOrchestrator.ReinstallAsync(_viewModel.CurrentBuild, cancellationToken);
             var wasCancelled = installResult == InstallFlowResult.Cancelled;
@@ -797,7 +871,7 @@ public partial class MainWindow : Window, ILocalizable
                     : LocalizationService.F("main.reinstall_failed", _viewModel.CurrentBuild.DisplayName));
                 if (!wasCancelled)
                     HandleInstallFailure(_viewModel.CurrentBuild, wasCancelled);
-                _viewModel.SetTransientPlayButton("⬇️", "main.download");
+                _viewModel.SetTransientPlayButton("main.download");
             }
         }
         catch (Exception ex)
@@ -823,21 +897,14 @@ public partial class MainWindow : Window, ILocalizable
         AddConsoleLine(LocalizationService.T("main.console_cleared"));
     }
     
-    private void ThemeToggle_Click(object sender, RoutedEventArgs e)
-    {
-        _isDarkTheme = !_isDarkTheme;
-        ApplyTheme();
-        UpdateConsoleColors();
-
-        _settings.DarkTheme = _isDarkTheme;
-        _settings.Save();
-    }
-
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         var window = new SettingsWindow(_settings, _logService) { Owner = this };
-        if (window.ShowDialog() != true || !window.Saved)
-            return;
+        using (DialogShade.Begin(this))
+        {
+            if (window.ShowDialog() != true || !window.Saved)
+                return;
+        }
 
         ApplyLocalization();
 
@@ -847,7 +914,7 @@ public partial class MainWindow : Window, ILocalizable
 
     private void ApplyTheme()
     {
-        _themeService.Apply(_isDarkTheme);
+        _themeService.Apply();
 
         Background = _themeService.WindowBackgroundBrush;
         TitleBar.Background = _themeService.SurfaceBrush;
@@ -859,26 +926,21 @@ public partial class MainWindow : Window, ILocalizable
         StatusBorder.Background = _themeService.SurfaceAltBrush;
         StatusBorder.BorderBrush = _themeService.BorderBrush;
         LogText.Foreground = _themeService.StatusBrush;
-        ConsoleBorder.Background = _themeService.IsDark ? _themeService.WindowBackgroundBrush : _themeService.SurfaceAltBrush;
+        ConsoleBorder.Background = _themeService.ConsoleBackgroundBrush;
         ConsoleBorder.BorderBrush = _themeService.BorderBrush;
-        ConsoleRichTextBox.Background = _themeService.IsDark ? _themeService.WindowBackgroundBrush : _themeService.SurfaceAltBrush;
+        ConsoleRichTextBox.Background = Brushes.Transparent;
         ConsoleRichTextBox.Foreground = _themeService.ConsoleBrush;
         ProfileBorder.Background = _themeService.SurfaceAltBrush;
         ProfileBorder.BorderBrush = _themeService.BorderBrush;
-        SkinBorder.Background = _themeService.BorderBrush;
+        SkinBorder.Background = _themeService.SurfaceRaisedBrush;
         UserInfoText.Foreground = _themeService.PrimaryTextBrush;
         UserStatusText.Foreground = _themeService.SecondaryTextBrush;
-        AuthButton.Foreground = Brushes.White;
-        PlayButton.Foreground = Brushes.White;
         DownloadProgress.Foreground = _themeService.ProgressForegroundBrush;
         DownloadProgress.Background = _themeService.ProgressBackgroundBrush;
-        ThemeIcon.Text = _themeService.ThemeIcon;
-        ThemeToggle.ToolTip = LocalizationService.T(_themeService.ThemeTooltipKey);
     }
 
     private void LoadThemeSetting()
     {
-        _isDarkTheme = _settings.DarkTheme;
         ApplyTheme();
         UpdateConsoleColors();
     }
@@ -926,10 +988,15 @@ public partial class MainWindow : Window, ILocalizable
     
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ButtonState == MouseButtonState.Pressed)
+        if (e.ClickCount == 2)
         {
-            this.DragMove();
+            MaximizeWindow_Click(sender, e);
+            e.Handled = true;
+            return;
         }
+
+        if (e.ButtonState == MouseButtonState.Pressed)
+            DragMove();
     }
     
     private void OnAuthSuccess(string username, string uuid)
@@ -941,7 +1008,7 @@ public partial class MainWindow : Window, ILocalizable
             _viewModel.SetStatus(LocalizationService.F("main.auth_success_status", username));
             AddConsoleLine(LocalizationService.F("main.auth_welcome", username));
             AddConsoleLine(LocalizationService.F("main.auth_uuid", uuid));
-            _ = LoadSkinAsync(uuid);
+            _ = RefreshAvatarAsync();
         });
     }
     
@@ -953,6 +1020,7 @@ public partial class MainWindow : Window, ILocalizable
             _viewModel.SetStatus(LocalizationService.F("main.error_with_message", error));
             AddConsoleLine(LocalizationService.F("main.error_with_message", error));
             AuthButton.IsEnabled = true;
+            RefreshAccountSwitcher();
         });
     }
 
@@ -961,7 +1029,7 @@ public partial class MainWindow : Window, ILocalizable
         Dispatcher.Invoke(() =>
         {
             SetProfileState(false);
-            SetDefaultSkin();
+            _ = RefreshAvatarAsync();
             _viewModel.SetStatus(LocalizationService.T("main.session_expired_status"));
             AddConsoleLine(LocalizationService.T("main.session_expired_console"));
         });
@@ -972,8 +1040,12 @@ public partial class MainWindow : Window, ILocalizable
         if (_settings.OfflineOnly || _authInProgress) return;
         AuthButton.IsEnabled = false;
         _authInProgress = true;
-        _viewModel.SetStatus(LocalizationService.T("main.auth_starting_status"));
-        AddConsoleLine(LocalizationService.T("main.auth_starting_console"));
+        _viewModel.SetStatus(_auth.IsAuthenticated()
+            ? LocalizationService.T("main.add_account_starting")
+            : LocalizationService.T("main.auth_starting_status"));
+        AddConsoleLine(_auth.IsAuthenticated()
+            ? LocalizationService.T("main.add_account_starting")
+            : LocalizationService.T("main.auth_starting_console"));
         
         try
         {
@@ -983,8 +1055,10 @@ public partial class MainWindow : Window, ILocalizable
                 _authInProgress = false;
                 AuthButton.IsEnabled = true;
                 AddConsoleLine(LocalizationService.T("main.auth_window_closed"));
+                RefreshAccountSwitcher();
             };
-            authWindow.ShowDialog();
+            using (DialogShade.Begin(this))
+                authWindow.ShowDialog();
         }
         catch (Exception ex)
         {
@@ -996,12 +1070,26 @@ public partial class MainWindow : Window, ILocalizable
     
     private void LogoutButton_Click(object sender, RoutedEventArgs e)
     {
+        var leaving = _auth.GetUsername() ?? "";
         _auth.Logout();
-        SetProfileState(false);
-        _viewModel.SetStatus(LocalizationService.T("main.logout_done"));
-        AddConsoleLine(LocalizationService.T("main.logout_console"));
+
+        if (_auth.IsAuthenticated())
+        {
+            var next = _auth.GetUsername() ?? "";
+            SetProfileState(true, next);
+            _viewModel.SetStatus(LocalizationService.F("main.account_switched", next));
+            AddConsoleLine(LocalizationService.F("main.account_signed_out_switched", leaving, next));
+            _ = RefreshAvatarAsync();
+        }
+        else
+        {
+            SetProfileState(false);
+            _viewModel.SetStatus(LocalizationService.T("main.logout_done"));
+            AddConsoleLine(LocalizationService.T("main.logout_console"));
+            _ = RefreshAvatarAsync();
+        }
+
         _authInProgress = false;
-        SetDefaultSkin();
     }
     
     private void AddConsoleLine(string message)
@@ -1017,7 +1105,7 @@ public partial class MainWindow : Window, ILocalizable
             paragraph.Margin = new Thickness(0, 0, 0, 0);
             
             var run = new Run($"{DateTime.Now:HH:mm:ss} > {message}\n");
-            run.Foreground = _isDarkTheme ? new SolidColorBrush(Colors.White) : new SolidColorBrush(Colors.DarkGreen);
+            run.Foreground = _themeService.ConsoleBrush;
             paragraph.Inlines.Add(run);
             ConsoleRichTextBox.Document.Blocks.Add(paragraph);
 
@@ -1097,7 +1185,7 @@ public partial class MainWindow : Window, ILocalizable
 
             if (!_launcherOrchestrator.IsInstalled(_viewModel.CurrentBuild!))
             {
-                _viewModel.SetTransientPlayButton("⏳", "main.downloading", enabled: false);
+                _viewModel.SetTransientPlayButton("main.downloading", enabled: false);
                 var cancellationToken = BeginDownloadUi();
                 var installResult = await _launcherOrchestrator.InstallIfNeededAsync(_viewModel.CurrentBuild!, cancellationToken);
                 var wasCancelled = installResult == InstallFlowResult.Cancelled;
@@ -1109,13 +1197,13 @@ public partial class MainWindow : Window, ILocalizable
                         : LocalizationService.T("main.install_failed_short"));
                     if (!wasCancelled)
                         HandleInstallFailure(_viewModel.CurrentBuild!, wasCancelled);
-                    _viewModel.SetTransientPlayButton("⬇️", "main.download");
+                    _viewModel.SetTransientPlayButton("main.download");
                     _viewModel.IsDownloading = false;
                     return;
                 }
             }
 
-            _viewModel.SetTransientPlayButton("⏳", "main.launching", enabled: false);
+            _viewModel.SetTransientPlayButton("main.launching", enabled: false);
 
             var preparation = await _launcherOrchestrator.PrepareLaunchAsync(
                 _viewModel.CurrentBuild!,
@@ -1161,7 +1249,7 @@ public partial class MainWindow : Window, ILocalizable
             {
                 _viewModel.SetStatus(LocalizationService.T("main.game_launched"));
                 AddConsoleLine(LocalizationService.T("main.game_launched_console"));
-                _viewModel.SetTransientPlayButton("▶", "main.game_running", enabled: false);
+                _viewModel.SetTransientPlayButton("main.game_running", enabled: false);
                 var buildName = _viewModel.CurrentBuild.DisplayName;
                 _ = Task.Run(() =>
                 {
@@ -1208,34 +1296,66 @@ public partial class MainWindow : Window, ILocalizable
         _viewModel.IsDownloading = false;
     }
 
-    private async Task LoadSkinAsync(string? uuid)
+    private void SkinBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (string.IsNullOrEmpty(uuid))
+        e.Handled = true;
+        var window = new SkinWindow(_auth, _skinService, _settings) { Owner = this };
+        using (DialogShade.Begin(this))
         {
-            SetDefaultSkin();
-            return;
-        }
-
-        SkinBorder.Background = new SolidColorBrush(Colors.LightGray);
-
-        var image = await _skinService.LoadSkinAsync(uuid);
-        if (image != null)
-        {
-            SkinImage.Source = image;
-            SkinBorder.Background = new SolidColorBrush(Colors.Transparent);
-        }
-        else
-        {
-            SetDefaultSkin();
+            if (window.ShowDialog() == true && window.Applied)
+            {
+                AddConsoleLine(LocalizationService.T("skin.applied_console"));
+                _ = RefreshAvatarAsync();
+            }
         }
     }
 
-    private void SetDefaultSkin()
+    public void SetDialogShade(bool visible)
     {
-        Dispatcher.Invoke(() =>
+        if (DialogShadeOverlay == null)
+            return;
+        DialogShadeOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async Task RefreshAvatarAsync()
+    {
+        try
         {
-            SkinBorder.Background = new SolidColorBrush(Colors.LightGray);
-            SkinImage.Source = null;
-        });
+            if (_auth.IsAuthenticated())
+            {
+                var uuid = _auth.GetUUID();
+                var token = _auth.GetAccessToken();
+
+                // Prefer live profile skin; skip stale disk cache first attempt.
+                var image = await _skinService.LoadAccountAvatarAsync(token, uuid);
+                if (image == null && !string.IsNullOrWhiteSpace(uuid))
+                {
+                    _skinService.InvalidateUuidCache(uuid);
+                    image = await _skinService.LoadSkinAsync(uuid);
+                }
+
+                if (image != null)
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        SkinImage.Source = image;
+                        SkinBorder.Background = Brushes.Transparent;
+                    });
+                    return;
+                }
+            }
+
+            await Dispatcher.InvokeAsync(ApplyLocalSkinAvatar);
+        }
+        catch
+        {
+            await Dispatcher.InvokeAsync(ApplyLocalSkinAvatar);
+        }
+    }
+
+    private void ApplyLocalSkinAvatar()
+    {
+        SkinImage.Source = _skinService.ResolveLocalAvatar(_settings.SkinPreset, _settings.CustomSkinPath);
+        SkinBorder.Background = Brushes.Transparent;
     }
 }

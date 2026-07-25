@@ -18,6 +18,9 @@ public class SettingsService
     public string Language { get; set; } = "auto";
     public bool OfflineOnly { get; set; }
     public bool CheckForUpdates { get; set; } = true;
+    public string SkinPreset { get; set; } = "default";
+    public string SkinModel { get; set; } = "classic";
+    public string CustomSkinPath { get; set; } = "";
     public List<string> RecentMcVersions { get; set; } = new();
 
     public SettingsService(string? launcherDir = null)
@@ -57,6 +60,12 @@ public class SettingsService
                 OfflineOnly = offlineOnly.GetBoolean();
             if (root.TryGetProperty("CheckForUpdates", out var checkUpdates))
                 CheckForUpdates = checkUpdates.GetBoolean();
+            if (root.TryGetProperty("SkinPreset", out var skinPreset))
+                SkinPreset = skinPreset.GetString() ?? "default";
+            if (root.TryGetProperty("SkinModel", out var skinModel))
+                SkinModel = skinModel.GetString() ?? "classic";
+            if (root.TryGetProperty("CustomSkinPath", out var customSkin))
+                CustomSkinPath = customSkin.GetString() ?? "";
             if (root.TryGetProperty("RecentMcVersions", out var recentMcVersions) &&
                 recentMcVersions.ValueKind == JsonValueKind.Array)
             {
@@ -93,6 +102,9 @@ public class SettingsService
                 Language,
                 OfflineOnly,
                 CheckForUpdates,
+                SkinPreset,
+                SkinModel,
+                CustomSkinPath,
                 RecentMcVersions
             };
             var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });

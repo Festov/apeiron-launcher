@@ -42,6 +42,7 @@ public partial class AddBuildWindow : Window, ILocalizable
     {
         InitializeComponent();
         Owner = Application.Current.MainWindow;
+        RoundedDialogChrome.Attach(DialogChrome);
         _settings = settings;
         _loaderService = new LoaderService(
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".minecraft"));

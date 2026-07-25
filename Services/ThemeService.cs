@@ -3,54 +3,61 @@ using System.Windows.Media;
 
 namespace Apeiron.Services;
 
+/// <summary>
+/// Single-theme palette (Obsidian Ember). Dual light/dark switching was removed.
+/// </summary>
 public sealed class ThemeService
 {
-    private static readonly Color LightBg = Parse("#F0F2F5");
-    private static readonly Color LightSurface = Parse("#FFFFFF");
-    private static readonly Color LightSurfaceAlt = Parse("#F9FAFB");
-    private static readonly Color LightBorder = Parse("#E5E7EB");
-    private static readonly Color LightConsole = Parse("#006400");
-    private static readonly Color LightStatus = Parse("#059669");
+    private static readonly Color Bg = Parse("#0A0C10");
+    private static readonly Color Surface = Parse("#12151C");
+    private static readonly Color SurfaceAlt = Parse("#1A1E28");
+    private static readonly Color SurfaceRaised = Parse("#222733");
+    private static readonly Color Border = Parse("#2C3342");
+    private static readonly Color ConsoleBg = Parse("#07090D");
+    private static readonly Color Console = Parse("#C8E6C0");
+    private static readonly Color Status = Parse("#4ADE80");
+    private static readonly Color Accent = Parse("#E8A54B");
+    private static readonly Color TextPrimary = Parse("#F3F0E8");
+    private static readonly Color TextSecondary = Parse("#A8B0C0");
+    private static readonly Color TextMuted = Parse("#6E7689");
 
-    private static readonly Color DarkBg = Parse("#1A1A2E");
-    private static readonly Color DarkSurface = Parse("#252540");
-    private static readonly Color DarkSurfaceAlt = Parse("#2D2D50");
-    private static readonly Color DarkBorder = Parse("#3D3D6A");
-    private static readonly Color DarkConsole = Colors.White;
-    private static readonly Color DarkStatus = Parse("#2ECC71");
-    private static readonly Color DarkAccent = Parse("#818CF8");
+    public bool IsDark => true;
+    public Brush WindowBackgroundBrush => CreateBrush(Bg);
+    public Brush SurfaceBrush => CreateBrush(Surface);
+    public Brush SurfaceAltBrush => CreateBrush(SurfaceAlt);
+    public Brush SurfaceRaisedBrush => CreateBrush(SurfaceRaised);
+    public Brush BorderBrush => CreateBrush(Border);
+    public Brush ConsoleBackgroundBrush => CreateBrush(ConsoleBg);
+    public Brush ConsoleBrush => CreateBrush(Console);
+    public Brush StatusBrush => CreateBrush(Status);
+    public Brush ProgressForegroundBrush => CreateBrush(Accent);
+    public Brush ProgressBackgroundBrush => CreateBrush(SurfaceRaised);
+    public Brush SecondaryTextBrush => CreateBrush(TextSecondary);
+    public Brush MutedTextBrush => CreateBrush(TextMuted);
+    public Brush PrimaryTextBrush => CreateBrush(TextPrimary);
 
-    public bool IsDark { get; private set; }
-    public Brush WindowBackgroundBrush => CreateBrush(IsDark ? DarkBg : LightBg);
-    public Brush SurfaceBrush => CreateBrush(IsDark ? DarkSurface : LightSurface);
-    public Brush SurfaceAltBrush => CreateBrush(IsDark ? DarkSurfaceAlt : LightSurfaceAlt);
-    public Brush BorderBrush => CreateBrush(IsDark ? DarkBorder : LightBorder);
-    public Brush ConsoleBrush => CreateBrush(IsDark ? DarkConsole : LightConsole);
-    public Brush StatusBrush => CreateBrush(IsDark ? DarkStatus : LightStatus);
-    public Brush ProgressForegroundBrush => CreateBrush(IsDark ? DarkAccent : Parse("#6366F1"));
-    public Brush ProgressBackgroundBrush => CreateBrush(IsDark ? DarkBorder : LightBorder);
-    public Brush SecondaryTextBrush => CreateBrush(IsDark ? Parse("#9CA3AF") : Parse("#6B7280"));
-    public Brush MutedTextBrush => CreateBrush(IsDark ? Parse("#6B7280") : Parse("#9CA3AF"));
-    public Brush PrimaryTextBrush => CreateBrush(IsDark ? Colors.White : Parse("#1F2937"));
-    public string ThemeIcon => IsDark ? "☀️" : "🌙";
-    public string ThemeTooltipKey => IsDark ? "main.theme_light" : "main.theme_dark";
-
-    public void Apply(bool dark)
+    public void Apply()
     {
-        IsDark = dark;
-        var resources = Application.Current.Resources;
+        var resources = Application.Current?.Resources;
+        if (resources == null)
+            return;
 
-        resources["BgBrush"] = resources[dark ? "DarkBgBrush" : "ThemeLightBgBrush"];
-        resources["SurfaceBrush"] = resources[dark ? "DarkSurfaceBrush" : "ThemeLightSurfaceBrush"];
-        resources["SurfaceLightBrush"] = resources[dark ? "DarkSurfaceLightBrush" : "ThemeLightSurfaceAltBrush"];
-        resources["BorderBrush"] = resources[dark ? "DarkBorderBrush" : "ThemeLightBorderBrush"];
-        resources["TextPrimaryBrush"] = resources[dark ? "DarkTextPrimaryBrush" : "ThemeLightTextPrimaryBrush"];
-        resources["TextSecondaryBrush"] = resources[dark ? "DarkTextSecondaryBrush" : "ThemeLightTextSecondaryBrush"];
-        resources["TextMutedBrush"] = resources[dark ? "DarkTextMutedBrush" : "ThemeLightTextMutedBrush"];
-        resources["ConsoleTextBrush"] = resources[dark ? "DarkConsoleTextBrush" : "ThemeLightConsoleTextBrush"];
-        resources["HoverBackgroundBrush"] = resources[dark ? "DarkHoverBackgroundBrush" : "ThemeLightHoverBackgroundBrush"];
-        resources["HoverBorderBrush"] = resources[dark ? "DarkHoverBorderBrush" : "ThemeLightHoverBorderBrush"];
-        resources["HoverForegroundBrush"] = resources[dark ? "DarkHoverForegroundBrush" : "ThemeLightHoverForegroundBrush"];
+        // Keep DynamicResource keys aligned with the single theme (idempotent).
+        resources["BgBrush"] = CreateBrush(Bg);
+        resources["SurfaceBrush"] = CreateBrush(Surface);
+        resources["SurfaceLightBrush"] = CreateBrush(SurfaceAlt);
+        resources["SurfaceRaisedBrush"] = CreateBrush(SurfaceRaised);
+        resources["BorderBrush"] = CreateBrush(Border);
+        resources["TextPrimaryBrush"] = CreateBrush(TextPrimary);
+        resources["TextSecondaryBrush"] = CreateBrush(TextSecondary);
+        resources["TextMutedBrush"] = CreateBrush(TextMuted);
+        resources["ConsoleTextBrush"] = CreateBrush(Console);
+        resources["ConsoleBgBrush"] = CreateBrush(ConsoleBg);
+        resources["HoverBackgroundBrush"] = CreateBrush(SurfaceRaised);
+        resources["HoverBorderBrush"] = CreateBrush(Accent);
+        resources["HoverForegroundBrush"] = CreateBrush(Accent);
+        resources["AccentBrush"] = CreateBrush(Accent);
+        resources["SuccessBrush"] = CreateBrush(Status);
     }
 
     private static SolidColorBrush CreateBrush(Color color)
