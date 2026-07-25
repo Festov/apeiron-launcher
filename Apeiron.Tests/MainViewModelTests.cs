@@ -21,7 +21,7 @@ public class MainViewModelTests
         {
             LocalizationService.Initialize("en");
             viewModel.RefreshPlayState(root);
-            Assert.Contains("⬇", viewModel.PlayButtonIcon);
+            Assert.Equal(LocalizationService.T("main.download"), viewModel.PlayButtonText);
             Assert.True(viewModel.PlayButtonEnabled);
 
             Directory.CreateDirectory(versionDir);
@@ -29,7 +29,6 @@ public class MainViewModelTests
             File.WriteAllBytes(Path.Combine(versionDir, $"{versionId}.jar"), new byte[20_000]);
 
             viewModel.RefreshPlayState(root);
-            Assert.Contains("▶", viewModel.PlayButtonIcon);
             Assert.Equal(LocalizationService.T("main.play"), viewModel.PlayButtonText);
         }
         finally
@@ -60,7 +59,7 @@ public class MainViewModelTests
             CurrentBuild = new BuildInfo { Name = "Pack", MinecraftVersion = "1.20.1", IsModded = false }
         };
 
-        viewModel.SetTransientPlayButton("⏳", "main.launching", enabled: false);
+        viewModel.SetTransientPlayButton("main.launching", enabled: false);
         Assert.Equal(LocalizationService.T("main.launching"), viewModel.PlayButtonText);
         Assert.False(viewModel.PlayButtonEnabled);
 

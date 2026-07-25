@@ -8,10 +8,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private BuildInfo? _currentBuild;
     private bool _isDownloading;
-    private string? _transientIcon;
     private string? _transientTextKey;
     private string _statusText = "";
-    private string _playButtonIcon = "▶ ";
     private string _playButtonText = "";
     private bool _playButtonEnabled;
     private bool _isProgressVisible;
@@ -55,12 +53,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => _statusText;
         private set => SetField(ref _statusText, value);
-    }
-
-    public string PlayButtonIcon
-    {
-        get => _playButtonIcon;
-        private set => SetField(ref _playButtonIcon, value);
     }
 
     public string PlayButtonText
@@ -113,11 +105,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void SetStatus(string text) => StatusText = text;
 
-    public void SetTransientPlayButton(string icon, string localizationKey, bool enabled = true)
+    public void SetTransientPlayButton(string localizationKey, bool enabled = true)
     {
-        _transientIcon = icon;
         _transientTextKey = localizationKey;
-        ApplyPlayButton(icon, localizationKey, enabled);
+        ApplyPlayButton(localizationKey, enabled);
     }
 
     public void SetPlayEnabled(bool enabled) => PlayButtonEnabled = enabled;
@@ -164,25 +155,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void RefreshPlayState(string minecraftDir)
     {
-        _transientIcon = null;
         _transientTextKey = null;
 
         var presentation = BuildUiState.GetPlayButtonPresentation(CurrentBuild, minecraftDir);
-        ApplyPlayButton(presentation.Icon, presentation.LocalizationKey, presentation.IsEnabled);
+        ApplyPlayButton(presentation.LocalizationKey, presentation.IsEnabled);
         StatusText = GetStatusText(minecraftDir);
     }
 
     public void RefreshLocalizedText(string minecraftDir)
     {
         if (_transientTextKey != null)
-            ApplyPlayButton(_transientIcon ?? "▶", _transientTextKey, PlayButtonEnabled);
+            ApplyPlayButton(_transientTextKey, PlayButtonEnabled);
         else
             RefreshPlayState(minecraftDir);
     }
 
-    private void ApplyPlayButton(string icon, string localizationKey, bool enabled)
+    private void ApplyPlayButton(string localizationKey, bool enabled)
     {
-        PlayButtonIcon = icon + (icon.Length > 1 ? "" : " ");
         PlayButtonText = LocalizationService.T(localizationKey);
         PlayButtonEnabled = enabled;
     }

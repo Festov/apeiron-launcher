@@ -25,11 +25,11 @@ public partial class SettingsWindow : Window, ILocalizable
     {
         InitializeComponent();
         Owner = Application.Current.MainWindow;
+        RoundedDialogChrome.Attach(DialogChrome);
         _settings = settings;
         _logService = logService;
 
         RamTextBox.Text = settings.Ram.ToString();
-        OfflineOnlyCheckBox.IsChecked = settings.OfflineOnly;
         CheckForUpdatesCheckBox.IsChecked = settings.CheckForUpdates;
 
         Loaded += (_, _) =>
@@ -49,7 +49,6 @@ public partial class SettingsWindow : Window, ILocalizable
         TitleText.Text = LocalizationService.T("settings.title");
         RamLabel.Text = LocalizationService.T("settings.ram");
         LanguageLabel.Text = LocalizationService.T("settings.language");
-        OfflineOnlyCheckBox.Content = LocalizationService.T("settings.offline_only");
         CheckForUpdatesCheckBox.Content = LocalizationService.T("settings.check_updates");
         OpenLogsButton.Content = LocalizationService.T("settings.open_logs");
         CheckUpdatesButton.Content = LocalizationService.T("settings.check_updates_now");
@@ -173,7 +172,6 @@ public partial class SettingsWindow : Window, ILocalizable
 
         _settings.Ram = ram;
         _settings.Language = language;
-        _settings.OfflineOnly = OfflineOnlyCheckBox.IsChecked == true;
         _settings.CheckForUpdates = CheckForUpdatesCheckBox.IsChecked == true;
         _settings.Save();
 

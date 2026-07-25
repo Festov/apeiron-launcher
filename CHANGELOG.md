@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.6.0 — 2026-07-25
+
+### UI redesign
+- Single “Obsidian Ember” theme (dark ink + amber accent)
+- Redesigned main window, settings, create/edit instance, and auth dialogs
+- Rounded dialog chrome, dimmed owner window behind modals
+- Labeled instance actions: Create / Modpack / Edit
+- Danger/warning button hover fills match their outline colors
+
+### Skins
+- Skin picker with 3D WebView2 preview (walk + rotate)
+- All nine default Minecraft skins (Classic / Slim groups)
+- Account skin history + browse/upload for signed-in users
+- Account skin loads into 3D preview on open
+
+### Accounts
+- Multiple Microsoft accounts: add, switch, sign out active only
+- Auth tokens remain DPAPI-encrypted (`config/auth.json`)
+
 ## 1.5.0 — 2026-07-12
 
 ### Stability & architecture (Stage 6)

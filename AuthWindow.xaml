@@ -7,21 +7,38 @@
         WindowStyle="SingleBorderWindow"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
-        MinHeight="550" MinWidth="750">
-    
-    <Grid Background="#FFFFFF">
+        MinHeight="550" MinWidth="750"
+        Background="{DynamicResource BgBrush}"
+        FontFamily="Segoe UI">
+
+    <Grid Background="{DynamicResource BgBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        
-        <Border Grid.Row="0" Background="#F9FAFB" Padding="16" BorderBrush="#E5E7EB" BorderThickness="0,0,0,1">
+
+        <Border Grid.Row="0"
+                Background="{DynamicResource SurfaceBrush}"
+                Padding="20,16"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,0,0,1">
             <StackPanel>
-                <TextBlock x:Name="AuthHeadingText" Text="Sign in" FontSize="18" FontWeight="700" Foreground="#1F2937"/>
-                <TextBlock x:Name="AuthSubtitleText" Text="Sign in with Microsoft" FontSize="12" Foreground="#6B7280" Margin="0,2,0,0"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <Border Width="6" Height="6" CornerRadius="3"
+                            Background="{DynamicResource AccentBrush}"
+                            Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="AuthHeadingText" Text="Sign in"
+                               FontSize="18" FontWeight="Bold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </StackPanel>
+                <TextBlock x:Name="AuthSubtitleText" Text="Sign in with Microsoft"
+                           FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                           Margin="16,0,0,0"/>
             </StackPanel>
         </Border>
-        
-        <wv2:WebView2 x:Name="AuthWebView" Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+
+        <Border Grid.Row="1" Background="{DynamicResource SurfaceLightBrush}">
+            <wv2:WebView2 x:Name="AuthWebView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        </Border>
     </Grid>
 </Window>
