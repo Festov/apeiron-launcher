@@ -10,7 +10,7 @@
     <AssemblyTitle>Apeiron Launcher</AssemblyTitle>
     <Authors>Apeiron</Authors>
     <Description>Minecraft Launcher for Apeiron</Description>
-    <Version>1.6.0</Version>
+    <Version>1.6.1</Version>
     
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -30,6 +30,7 @@
     <PackageReference Include="SharpZipLib" Version="1.4.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
+    <PackageReference Include="SkiaSharp" Version="3.119.0" />
   </ItemGroup>
 
   <ItemGroup>

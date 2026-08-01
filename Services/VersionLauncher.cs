@@ -92,9 +92,11 @@ public class VersionLauncher
             {
                 ["${natives_directory}"] = nativesDir,
                 ["${launcher_name}"] = "Apeiron",
+                ["${launcher_version}"] = LauncherAppVersion.FullDisplay,
                 ["${version_name}"] = versionId,
                 ["${library_directory}"] = _librariesDir,
                 ["${classpath}"] = classpath,
+                ["${classpath_separator}"] = Path.PathSeparator.ToString(),
                 ["${auth_player_name}"] = username,
                 ["${auth_uuid}"] = FormatUuid(uuid),
                 ["${auth_access_token}"] = accessToken,
@@ -127,6 +129,7 @@ public class VersionLauncher
 
             var javaMajor = JavaService.DetectJavaMajor(javaPath);
             FilterUnsupportedJvmArgs(processArgs, javaMajor);
+            LaunchProfileHelper.DropOrphanValueFlags(processArgs);
             Log?.Invoke(LocalizationService.F("log.launch.using_java", javaPath, javaMajor));
 
             if (!processArgs.Contains("-cp"))
@@ -141,6 +144,14 @@ public class VersionLauncher
             if (hasGameArgs)
             {
                 AppendArguments(processArgs, arguments?["game"], substitutionVars, features);
+            }
+            else if (!string.IsNullOrWhiteSpace(merged["minecraftArguments"]?.ToString()))
+            {
+                // Legacy Forge/Fabric profiles (1.12.x etc.) use minecraftArguments, not arguments.game.
+                AppendLegacyMinecraftArguments(
+                    processArgs,
+                    merged["minecraftArguments"]!.ToString()!,
+                    substitutionVars);
             }
             else
             {
@@ -215,6 +226,15 @@ public class VersionLauncher
         if (gameArgs is JArray arr)
             return arr.Count > 0;
         return false;
+    }
+
+    private static void AppendLegacyMinecraftArguments(
+        List<string> target,
+        string minecraftArguments,
+        Dictionary<string, string> vars)
+    {
+        foreach (var part in LaunchProfileHelper.ParseLegacyMinecraftArguments(minecraftArguments, vars))
+            target.Add(part);
     }
 
     private async Task<JObject> LoadMergedVersionAsync(string versionId)
@@ -380,19 +400,14 @@ public class VersionLauncher
             }
         }
 
-        var versionJar = Path.Combine(_versionsDir, versionId, $"{versionId}.jar");
-        if (File.Exists(versionJar))
+        var versionJar = LaunchProfileHelper.ResolveClientJarPath(
+            _versionsDir,
+            versionId,
+            versionData["jar"]?.ToString(),
+            versionData["inheritsFrom"]?.ToString(),
+            versionData["mainClass"]?.ToString());
+        if (!string.IsNullOrEmpty(versionJar))
             jars.Add(versionJar);
-        else
-        {
-            var inheritsFrom = versionData["inheritsFrom"]?.ToString();
-            if (!string.IsNullOrEmpty(inheritsFrom))
-            {
-                var parentJar = Path.Combine(_versionsDir, inheritsFrom, $"{inheritsFrom}.jar");
-                if (File.Exists(parentJar))
-                    jars.Add(parentJar);
-            }
-        }
 
         return string.Join(";", AppendLwjglUnsafeFallback(jars).Distinct(StringComparer.OrdinalIgnoreCase));
     }
@@ -577,7 +592,7 @@ public class VersionLauncher
     private static bool IsValidArgument(string str)
     {
         if (string.IsNullOrWhiteSpace(str)) return false;
-        if (str.Contains("${", StringComparison.Ordinal)) return false;
+        if (LaunchProfileHelper.StillHasPlaceholders(str)) return false;
         return true;
     }
 
@@ -675,13 +690,8 @@ public class VersionLauncher
         _ => false
     };
 
-    private static string Substitute(string input, Dictionary<string, string> vars)
-    {
-        var result = input;
-        foreach (var (key, value) in vars)
-            result = result.Replace(key, value);
-        return result;
-    }
+    private static string Substitute(string input, Dictionary<string, string> vars) =>
+        LaunchProfileHelper.Substitute(input, vars);
 
     private static string FormatUuid(string uuid)
     {

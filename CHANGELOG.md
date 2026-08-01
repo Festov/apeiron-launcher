@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1 — 2026-08-01
+
+### Modpacks
+- Added Modrinth and CurseForge modpacks
+
 ## 1.6.0 — 2026-07-25
 
 ### UI redesign

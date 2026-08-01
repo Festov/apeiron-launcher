@@ -117,9 +117,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         var update = DownloadProgressHelper.CreateUpdate(progress, text);
         IsProgressVisible = true;
-        IsProgressIndeterminate = !update.UpdateBarValue;
         if (update.UpdateBarValue)
+        {
+            IsProgressIndeterminate = false;
             ProgressValue = update.BarValue;
+        }
+        else
+        {
+            IsProgressIndeterminate = true;
+        }
+
         if (!string.IsNullOrEmpty(update.StatusText))
             ProgressText = update.StatusText;
     }
@@ -138,6 +145,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         IsOpenInstallLogVisible = false;
         IsCancelDownloadVisible = true;
+        IsProgressIndeterminate = false;
+        ProgressValue = 0;
+        ProgressText = "";
         ShowProgressPanel();
     }
 

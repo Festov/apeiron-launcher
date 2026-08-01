@@ -31,12 +31,16 @@ public partial class AddBuildWindow : Window, ILocalizable
 
     private readonly SettingsService _settings;
     private readonly LoaderService _loaderService;
+    private readonly ModrinthModpackService _modrinthModpacks = new();
     public BuildInfo? CreatedBuild { get; private set; }
     private List<VersionEntry> _allVersions = new();
     private bool _isLoadingVersions;
     private string _versionSearchQuery = "";
     private CancellationTokenSource? _loaderVersionsCts;
     private int _loaderVersionsRequestId;
+    private CancellationTokenSource? _modpackSearchCts;
+    private int _modpackSearchRequestId;
+    private System.Windows.Threading.DispatcherTimer? _modpackSearchDebounce;
 
     public AddBuildWindow(SettingsService settings)
     {
@@ -49,6 +53,8 @@ public partial class AddBuildWindow : Window, ILocalizable
 
         LoaderComboBox.ItemsSource = new[] { "Fabric", "Forge", "NeoForge", "Quilt" };
         LoaderComboBox.SelectedIndex = 0;
+        // Platform options filled in ApplyLocalization; default = Both
+        ModpackPlatformComboBox.SelectedIndex = 0;
 
         Loaded += async (_, _) =>
         {
@@ -63,14 +69,20 @@ public partial class AddBuildWindow : Window, ILocalizable
             _loaderVersionsCts?.Cancel();
             _loaderVersionsCts?.Dispose();
             _loaderVersionsCts = null;
+            _modpackSearchCts?.Cancel();
+            _modpackSearchCts?.Dispose();
+            _modpackSearchCts = null;
+            _modpackSearchDebounce?.Stop();
         };
     }
 
     private void OnLanguageChanged() => Dispatcher.Invoke(() =>
     {
-        var wasModded = IsModdedSelected();
+        var typeIdx = TypeComboBox.SelectedIndex;
+        var platformIdx = ModpackPlatformComboBox.SelectedIndex;
         ApplyLocalization();
-        TypeComboBox.SelectedIndex = wasModded ? 1 : 0;
+        TypeComboBox.SelectedIndex = typeIdx < 0 ? 0 : typeIdx;
+        ModpackPlatformComboBox.SelectedIndex = platformIdx < 0 ? 0 : platformIdx;
     });
 
     public void ApplyLocalization()
@@ -89,12 +101,31 @@ public partial class AddBuildWindow : Window, ILocalizable
         ShowSnapshotsCheckBox.Content = LocalizationService.T("add_build.show_snapshots");
         LoaderVersionLabel.Text = LocalizationService.T("add_build.loader_version");
         RefreshVersionsButton.ToolTip = LocalizationService.T("add_build.refresh_versions");
+        ModpackPlatformLabel.Text = LocalizationService.T("add_build.modpack.platform");
+        ModpackSearchLabel.Text = LocalizationService.T("add_build.modpack.search");
+        ModpackSearchTextBox.ToolTip = LocalizationService.T("add_build.modpack.search_hint");
+        ModpackListLabel.Text = LocalizationService.T("add_build.modpack.list");
+        RefreshModpacksButton.ToolTip = LocalizationService.T("add_build.modpack.refresh");
         CancelButton.Content = LocalizationService.T("common.cancel");
         CreateButton.Content = LocalizationService.T("common.create");
 
+        var platformIdx = ModpackPlatformComboBox.SelectedIndex;
+        ModpackPlatformComboBox.ItemsSource = new[]
+        {
+            LocalizationService.T("add_build.modpack.platform.both"),
+            LocalizationService.T("add_build.modpack.platform.modrinth"),
+            LocalizationService.T("add_build.modpack.platform.curseforge")
+        };
+        ModpackPlatformComboBox.SelectedIndex = platformIdx < 0 ? 0 : Math.Min(platformIdx, 2);
+
         var idx = TypeComboBox.SelectedIndex;
-        TypeComboBox.ItemsSource = new[] { LocalizationService.T("add_build.type.vanilla"), LocalizationService.T("add_build.type.modded") };
-        TypeComboBox.SelectedIndex = idx < 0 ? 0 : idx;
+        TypeComboBox.ItemsSource = new[]
+        {
+            LocalizationService.T("add_build.type.vanilla"),
+            LocalizationService.T("add_build.type.modded"),
+            LocalizationService.T("add_build.type.modpacks")
+        };
+        TypeComboBox.SelectedIndex = idx < 0 ? 0 : Math.Min(idx, 2);
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -106,6 +137,7 @@ public partial class AddBuildWindow : Window, ILocalizable
     private void BuildNameTextBox_TextChanged(object sender, TextChangedEventArgs e) => UpdateCreateButtonState();
 
     private bool IsModdedSelected() => TypeComboBox.SelectedIndex == 1;
+    private bool IsModpacksSelected() => TypeComboBox.SelectedIndex == 2;
 
     private void TypeComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
         UiAsync.Run(OnTypeSelectionChangedAsync, Dispatcher);
@@ -114,16 +146,24 @@ public partial class AddBuildWindow : Window, ILocalizable
     {
         if (LoaderLabel == null || LoaderComboBox == null ||
             LoaderVersionLabel == null || LoaderVersionComboBox == null ||
-            LoaderRow == null || LoaderVersionRow == null)
+            LoaderRow == null || LoaderVersionRow == null ||
+            ClassicFieldsPanel == null || ModpackFieldsPanel == null)
             return;
 
-        bool isModded = IsModdedSelected();
+        var modpacks = IsModpacksSelected();
+        var isModded = IsModdedSelected();
+
+        ClassicFieldsPanel.Visibility = modpacks ? Visibility.Collapsed : Visibility.Visible;
+        ModpackFieldsPanel.Visibility = modpacks ? Visibility.Visible : Visibility.Collapsed;
 
         LoaderRow.Visibility = isModded ? Visibility.Visible : Visibility.Collapsed;
         LoaderVersionRow.Visibility = isModded ? Visibility.Visible : Visibility.Collapsed;
 
         if (isModded)
             await LoadLoaderVersions();
+
+        if (modpacks)
+            await LoadModpacksAsync();
 
         UpdateCreateButtonState();
     }
@@ -154,15 +194,19 @@ public partial class AddBuildWindow : Window, ILocalizable
     {
         if (CreateButton == null) return;
 
-        bool hasName = true;
-        bool hasVersion = VersionComboBox?.SelectedItem is VersionListItem v && !string.IsNullOrEmpty(v.Id);
+        if (IsModpacksSelected())
+        {
+            CreateButton.IsEnabled = ModpackListBox?.SelectedItem is ModpackListItem;
+            return;
+        }
 
+        bool hasVersion = VersionComboBox?.SelectedItem is VersionListItem v && !string.IsNullOrEmpty(v.Id);
         bool isModded = IsModdedSelected();
         bool hasLoader = !isModded || LoaderComboBox?.SelectedItem is string;
         bool hasLoaderVersion = !isModded || (LoaderVersionComboBox?.SelectedItem is string lv &&
                                                 !IsLoaderPlaceholder(lv));
 
-        CreateButton.IsEnabled = hasName && hasVersion && hasLoader && hasLoaderVersion;
+        CreateButton.IsEnabled = hasVersion && hasLoader && hasLoaderVersion;
     }
 
     private void RefreshVersionsButton_Click(object sender, RoutedEventArgs e) =>
@@ -380,8 +424,179 @@ public partial class AddBuildWindow : Window, ILocalizable
         return string.Equals((VersionComboBox.SelectedItem as VersionListItem)?.Id, mcVersion, StringComparison.Ordinal);
     }
 
+    private void ModpackPlatformComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || !IsModpacksSelected())
+            return;
+        UiAsync.Run(LoadModpacksAsync, Dispatcher);
+    }
+
+    private void ModpackSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!IsLoaded || !IsModpacksSelected())
+            return;
+
+        _modpackSearchDebounce ??= new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(400)
+        };
+        _modpackSearchDebounce.Stop();
+        _modpackSearchDebounce.Tick -= ModpackSearchDebounce_Tick;
+        _modpackSearchDebounce.Tick += ModpackSearchDebounce_Tick;
+        _modpackSearchDebounce.Start();
+    }
+
+    private void ModpackSearchDebounce_Tick(object? sender, EventArgs e)
+    {
+        _modpackSearchDebounce?.Stop();
+        UiAsync.Run(LoadModpacksAsync, Dispatcher);
+    }
+
+    private void RefreshModpacksButton_Click(object sender, RoutedEventArgs e) =>
+        UiAsync.Run(LoadModpacksAsync, Dispatcher);
+
+    private void ModpackListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ModpackListBox.SelectedItem is ModpackListItem pack &&
+            string.IsNullOrWhiteSpace(BuildNameTextBox.Text))
+        {
+            // leave name empty so install uses pack name; no auto-fill required
+        }
+
+        UpdateCreateButtonState();
+    }
+
+    private async Task LoadModpacksAsync()
+    {
+        if (ModpackListBox == null || ModpackStatusText == null)
+            return;
+
+        _modpackSearchCts?.Cancel();
+        _modpackSearchCts?.Dispose();
+        _modpackSearchCts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        var token = _modpackSearchCts.Token;
+        var requestId = ++_modpackSearchRequestId;
+        var query = ModpackSearchTextBox?.Text?.Trim() ?? "";
+        // 0 = Both, 1 = Modrinth, 2 = CurseForge
+        var platformMode = ModpackPlatformComboBox.SelectedIndex;
+
+        ModpackListBox.ItemsSource = null;
+        ModpackStatusText.Visibility = Visibility.Visible;
+        ModpackStatusText.Text = LocalizationService.T("add_build.modpack.loading");
+        RefreshModpacksButton.IsEnabled = false;
+
+        try
+        {
+            IReadOnlyList<ModpackListItem> items = platformMode switch
+            {
+                2 => await LoadCurseForgePacksAsync(query, limit: 100, token),
+                1 => await _modrinthModpacks.SearchPopularAsync(query, limit: 100, cancellationToken: token),
+                _ => await LoadBothPlatformsAsync(query, token)
+            };
+
+            if (requestId != _modpackSearchRequestId)
+                return;
+
+            var showPlatform = platformMode == 0;
+            foreach (var item in items)
+                item.ShowPlatformInSubtitle = showPlatform;
+
+            ModpackListBox.ItemsSource = items;
+            if (items.Count == 0)
+            {
+                ModpackStatusText.Text = LocalizationService.T("add_build.modpack.empty");
+                ModpackStatusText.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ModpackStatusText.Text = "";
+                ModpackStatusText.Visibility = Visibility.Collapsed;
+                _ = ModpackIconLoader.LoadAllAsync(items, token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // newer request
+        }
+        catch (Exception ex)
+        {
+            if (requestId != _modpackSearchRequestId)
+                return;
+            ModpackListBox.ItemsSource = null;
+            ModpackStatusText.Visibility = Visibility.Visible;
+            ModpackStatusText.Text = LocalizationService.F("add_build.modpack.load_error", ex.Message);
+        }
+        finally
+        {
+            if (requestId == _modpackSearchRequestId)
+            {
+                RefreshModpacksButton.IsEnabled = true;
+                UpdateCreateButtonState();
+            }
+        }
+    }
+
+    private async Task<IReadOnlyList<ModpackListItem>> LoadCurseForgePacksAsync(
+        string query,
+        int limit,
+        CancellationToken token)
+    {
+        var cf = new CurseForgeModpackService(_settings.CurseForgeApiKey);
+        if (!cf.HasApiKey)
+            throw new InvalidOperationException(LocalizationService.T("add_build.modpack.curseforge_key_missing"));
+
+        return await cf.SearchPopularAsync(query, limit: limit, cancellationToken: token);
+    }
+
+    private async Task<IReadOnlyList<ModpackListItem>> LoadBothPlatformsAsync(
+        string query,
+        CancellationToken token)
+    {
+        const int perPlatform = 50;
+        var modrinthTask = _modrinthModpacks.SearchPopularAsync(query, limit: perPlatform, cancellationToken: token);
+
+        IReadOnlyList<ModpackListItem> curse = Array.Empty<ModpackListItem>();
+        var cf = new CurseForgeModpackService(_settings.CurseForgeApiKey);
+        Task<IReadOnlyList<ModpackListItem>>? curseTask = null;
+        if (cf.HasApiKey)
+            curseTask = cf.SearchPopularAsync(query, limit: perPlatform, cancellationToken: token);
+
+        IReadOnlyList<ModpackListItem> modrinth;
+        try
+        {
+            if (curseTask != null)
+            {
+                await Task.WhenAll(modrinthTask, curseTask);
+                modrinth = await modrinthTask;
+                try { curse = await curseTask; }
+                catch (OperationCanceledException) { throw; }
+                catch { /* keep Modrinth results if CurseForge fails */ }
+            }
+            else
+            {
+                modrinth = await modrinthTask;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+
+        return modrinth
+            .Concat(curse)
+            .OrderByDescending(p => p.Downloads)
+            .Take(100)
+            .ToList();
+    }
+
     private void CreateButton_Click(object sender, RoutedEventArgs e)
     {
+        if (IsModpacksSelected())
+        {
+            CreateModpackAsync();
+            return;
+        }
+
         if (VersionComboBox.SelectedItem is not VersionListItem versionItem || string.IsNullOrEmpty(versionItem.Id))
         {
             MessageBox.Show(LocalizationService.T("add_build.select_mc_version"), LocalizationService.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -423,6 +638,35 @@ public partial class AddBuildWindow : Window, ILocalizable
 
         DialogResult = true;
         Close();
+    }
+
+    private void CreateModpackAsync()
+    {
+        if (ModpackListBox.SelectedItem is not ModpackListItem pack)
+        {
+            MessageBox.Show(LocalizationService.T("add_build.modpack.select_pack"), LocalizationService.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var instancesRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "instances");
+            Directory.CreateDirectory(instancesRoot);
+            var installer = new ModpackInstallService(instancesRoot, _settings.CurseForgeApiKey);
+            var displayName = BuildNameTextBox.Text.Trim();
+            CreatedBuild = installer.CreatePendingInstance(pack, displayName);
+
+            DialogResult = true;
+            Close();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                LocalizationService.F("add_build.modpack.install_error", ex.Message),
+                LocalizationService.T("common.error"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
