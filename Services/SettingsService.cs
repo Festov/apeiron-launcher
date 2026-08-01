@@ -21,6 +21,8 @@ public class SettingsService
     public string SkinPreset { get; set; } = "default";
     public string SkinModel { get; set; } = "classic";
     public string CustomSkinPath { get; set; } = "";
+    public string CurseForgeApiKey { get; set; } =
+        "$2a$10$ch9m5Af.9tnalNjC18wLvuhnD0O38uL6ufQ.OiD22qed0Cu8mCva6";
     public List<string> RecentMcVersions { get; set; } = new();
 
     public SettingsService(string? launcherDir = null)
@@ -66,6 +68,12 @@ public class SettingsService
                 SkinModel = skinModel.GetString() ?? "classic";
             if (root.TryGetProperty("CustomSkinPath", out var customSkin))
                 CustomSkinPath = customSkin.GetString() ?? "";
+            if (root.TryGetProperty("CurseForgeApiKey", out var curseForgeKey))
+            {
+                var key = curseForgeKey.GetString();
+                if (!string.IsNullOrWhiteSpace(key))
+                    CurseForgeApiKey = key;
+            }
             if (root.TryGetProperty("RecentMcVersions", out var recentMcVersions) &&
                 recentMcVersions.ValueKind == JsonValueKind.Array)
             {
@@ -105,6 +113,7 @@ public class SettingsService
                 SkinPreset,
                 SkinModel,
                 CustomSkinPath,
+                CurseForgeApiKey,
                 RecentMcVersions
             };
             var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });

@@ -22,8 +22,21 @@ public class BuildInfo
     public int ResolutionHeight { get; set; }
     public bool Fullscreen { get; set; }
 
+    /// <summary>Modrinth or CurseForge when created from catalog; empty for classic builds.</summary>
+    public string ModpackSource { get; set; } = "";
+    /// <summary>Project/mod id on the catalog platform.</summary>
+    public string ModpackProjectId { get; set; } = "";
+    /// <summary>True until pack files (mods/overrides) are downloaded on Play.</summary>
+    public bool PendingModpackInstall { get; set; }
+
     [JsonIgnore]
     public bool IsPrimary { get; set; }
+
+    [JsonIgnore]
+    public bool NeedsModpackContentInstall =>
+        PendingModpackInstall &&
+        !string.IsNullOrWhiteSpace(ModpackSource) &&
+        !string.IsNullOrWhiteSpace(ModpackProjectId);
 
     public string ComboDisplay => IsPrimary ? $"★ {DisplayName}" : DisplayName;
 
@@ -123,7 +136,10 @@ public class BuildInfo
             RamGb = RamGb,
             ResolutionWidth = ResolutionWidth,
             ResolutionHeight = ResolutionHeight,
-            Fullscreen = Fullscreen
+            Fullscreen = Fullscreen,
+            ModpackSource = ModpackSource,
+            ModpackProjectId = ModpackProjectId,
+            PendingModpackInstall = PendingModpackInstall
         };
     }
 }

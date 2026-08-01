@@ -1177,17 +1177,69 @@ public partial class MainWindow : Window, ILocalizable
                 return;
             }
 
-            if (!await EnsureJavaForBuildAsync(_viewModel.CurrentBuild!))
+            var build = _viewModel.CurrentBuild!;
+
+            // Modpack catalog installs: content first (sets MC/loader), then vanilla/loader like classic builds.
+            if (build.NeedsModpackContentInstall)
+            {
+                _viewModel.SetTransientPlayButton("main.downloading", enabled: false);
+                var packToken = BeginDownloadUi();
+                try
+                {
+                    var instancesRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "instances");
+                    var installer = new ModpackInstallService(instancesRoot, _settings.CurseForgeApiKey);
+                    var progress = new Progress<ModpackInstallProgress>(p =>
+                    {
+                        if (packToken.IsCancellationRequested)
+                            return;
+                        UpdateDownloadProgress(p.Percent, p.Message, lockPlayButton: true);
+                    });
+
+                    await installer.CompletePendingInstallAsync(build, progress, packToken);
+                    _buildManager.UpdateBuild(build);
+
+                    if (!string.IsNullOrWhiteSpace(build.MinecraftVersion))
+                    {
+                        RecentMcVersionsHelper.Record(_settings.RecentMcVersions, build.MinecraftVersion);
+                        _settings.Save();
+                    }
+
+                    EndDownloadUi();
+                }
+                catch (Exception ex) when (HttpRetryHelper.IsCancellation(ex, packToken))
+                {
+                    EndDownloadUi();
+                    _viewModel.SetStatus(LocalizationService.T("main.download_cancelled"));
+                    _viewModel.IsDownloading = false;
+                    RestorePlayButton();
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    EndDownloadUi();
+                    _viewModel.IsDownloading = false;
+                    RestorePlayButton();
+                    _viewModel.SetStatus(LocalizationService.F("main.modpack_install_failed", ex.Message));
+                    MessageBox.Show(
+                        LocalizationService.F("main.modpack_install_failed", ex.Message),
+                        LocalizationService.T("common.error"),
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    return;
+                }
+            }
+
+            if (!await EnsureJavaForBuildAsync(build))
             {
                 RestorePlayButton();
                 return;
             }
 
-            if (!_launcherOrchestrator.IsInstalled(_viewModel.CurrentBuild!))
+            if (!_launcherOrchestrator.IsInstalled(build))
             {
                 _viewModel.SetTransientPlayButton("main.downloading", enabled: false);
                 var cancellationToken = BeginDownloadUi();
-                var installResult = await _launcherOrchestrator.InstallIfNeededAsync(_viewModel.CurrentBuild!, cancellationToken);
+                var installResult = await _launcherOrchestrator.InstallIfNeededAsync(build, cancellationToken);
                 var wasCancelled = installResult == InstallFlowResult.Cancelled;
                 EndDownloadUi();
                 if (installResult is InstallFlowResult.Failed or InstallFlowResult.Cancelled)
@@ -1196,7 +1248,7 @@ public partial class MainWindow : Window, ILocalizable
                         ? LocalizationService.T("main.download_cancelled")
                         : LocalizationService.T("main.install_failed_short"));
                     if (!wasCancelled)
-                        HandleInstallFailure(_viewModel.CurrentBuild!, wasCancelled);
+                        HandleInstallFailure(build, wasCancelled);
                     _viewModel.SetTransientPlayButton("main.download");
                     _viewModel.IsDownloading = false;
                     return;
@@ -1206,7 +1258,7 @@ public partial class MainWindow : Window, ILocalizable
             _viewModel.SetTransientPlayButton("main.launching", enabled: false);
 
             var preparation = await _launcherOrchestrator.PrepareLaunchAsync(
-                _viewModel.CurrentBuild!,
+                build,
                 _auth,
                 _settings,
                 OfflineNameTextBox.Text);

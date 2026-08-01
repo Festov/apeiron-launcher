@@ -13,6 +13,7 @@ public static class HttpRetryHelper
     public static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
         statusCode is HttpStatusCode.RequestTimeout
             or HttpStatusCode.TooManyRequests
+            or HttpStatusCode.Forbidden // CurseForge CDN rate-limits / temporary blocks
             or HttpStatusCode.InternalServerError
             or HttpStatusCode.BadGateway
             or HttpStatusCode.ServiceUnavailable
@@ -23,6 +24,40 @@ public static class HttpRetryHelper
 
     public static TimeSpan GetBackoff(int attempt) =>
         TimeSpan.FromMilliseconds(1000 * Math.Max(1, attempt));
+
+    /// <summary>Longer delay for 403/429 from CDN under parallel load.</summary>
+    public static TimeSpan GetDownloadBackoff(int attempt, HttpStatusCode? status = null)
+    {
+        var baseMs = status is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests
+            ? 2500
+            : 1000;
+        return TimeSpan.FromMilliseconds(baseMs * Math.Max(1, attempt));
+    }
+
+    public static bool IsCancellation(Exception? ex, CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested)
+            return true;
+
+        while (ex != null)
+        {
+            if (ex is OperationCanceledException)
+                return true;
+
+            if (ex is AggregateException aggregate)
+            {
+                foreach (var inner in aggregate.InnerExceptions)
+                {
+                    if (IsCancellation(inner, cancellationToken))
+                        return true;
+                }
+            }
+
+            ex = ex.InnerException;
+        }
+
+        return false;
+    }
 
     public static async Task<string> GetStringAsync(
         HttpClient client,

@@ -30,6 +30,12 @@ public class BuildInstallService
 
     public static bool IsInstalled(string minecraftDir, BuildInfo build)
     {
+        if (build.NeedsModpackContentInstall)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(build.MinecraftVersion))
+            return false;
+
         var versionId = build.GetVersionId();
         var versionDir = Path.Combine(minecraftDir, "versions", versionId);
         var jsonPath = Path.Combine(versionDir, $"{versionId}.json");
