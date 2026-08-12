@@ -25,10 +25,18 @@ public class SettingsServiceTests
                 DarkTheme = false,
                 OfflineUsername = "Player",
                 DefaultBuildId = "build-1",
+                LastPlayedBuildId = "build-9",
                 Language = "ru",
                 OfflineOnly = true,
                 CheckForUpdates = false,
-                CurseForgeApiKey = "cf-test-key"
+                MinecraftDir = Path.Combine(root, "custom-mc"),
+                CurseForgeApiKey = "cf-test-key",
+                MinimizeToTray = true,
+                CloseOnGameLaunch = true,
+                JvmProfile = JvmProfileHelper.Performance,
+                OnboardingCompleted = true,
+                AssetParallelism = 16,
+                SkinPreviewBackground = "#87CEEB"
             };
             settings.RecentMcVersions = new List<string> { "1.21", "1.20.1" };
             settings.Save();
@@ -40,10 +48,19 @@ public class SettingsServiceTests
             Assert.False(loaded.DarkTheme);
             Assert.Equal("Player", loaded.OfflineUsername);
             Assert.Equal("build-1", loaded.DefaultBuildId);
+            Assert.Equal("build-9", loaded.LastPlayedBuildId);
             Assert.Equal("ru", loaded.Language);
             Assert.True(loaded.OfflineOnly);
             Assert.False(loaded.CheckForUpdates);
+            Assert.Equal(Path.Combine(root, "custom-mc"), loaded.MinecraftDir);
+            Assert.Equal(Path.GetFullPath(Path.Combine(root, "custom-mc")), loaded.GetMinecraftDir());
             Assert.Equal("cf-test-key", loaded.CurseForgeApiKey);
+            Assert.True(loaded.MinimizeToTray);
+            Assert.True(loaded.CloseOnGameLaunch);
+            Assert.Equal(JvmProfileHelper.Performance, loaded.JvmProfile);
+            Assert.True(loaded.OnboardingCompleted);
+            Assert.Equal(16, loaded.AssetParallelism);
+            Assert.Equal("#87CEEB", loaded.SkinPreviewBackground);
             Assert.Equal(new[] { "1.21", "1.20.1" }, loaded.RecentMcVersions);
         }
         finally

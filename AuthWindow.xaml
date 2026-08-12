@@ -9,7 +9,8 @@
         ResizeMode="CanResize"
         MinHeight="550" MinWidth="750"
         Background="{DynamicResource BgBrush}"
-        FontFamily="Segoe UI">
+        FontFamily="Segoe UI"
+        KeyDown="Window_KeyDown">
 
     <Grid Background="{DynamicResource BgBrush}">
         <Grid.RowDefinitions>

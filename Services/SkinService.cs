@@ -205,15 +205,15 @@ public class SkinService
     public string? GetPresetSkinPath(SkinPreset preset) =>
         preset switch
         {
-            SkinPreset.Steve => FindAssetPath("steve-skin.png"),
-            SkinPreset.Alex => FindAssetPath("alex-skin.png"),
-            SkinPreset.Ari => FindAssetPath("ari-skin.png"),
-            SkinPreset.Efe => FindAssetPath("efe-skin.png"),
-            SkinPreset.Kai => FindAssetPath("kai-skin.png"),
-            SkinPreset.Makena => FindAssetPath("makena-skin.png"),
-            SkinPreset.Noor => FindAssetPath("noor-skin.png"),
-            SkinPreset.Sunny => FindAssetPath("sunny-skin.png"),
-            SkinPreset.Zuri => FindAssetPath("zuri-skin.png"),
+            SkinPreset.Steve => EnsureAssetFile("steve-skin.png"),
+            SkinPreset.Alex => EnsureAssetFile("alex-skin.png"),
+            SkinPreset.Ari => EnsureAssetFile("ari-skin.png"),
+            SkinPreset.Efe => EnsureAssetFile("efe-skin.png"),
+            SkinPreset.Kai => EnsureAssetFile("kai-skin.png"),
+            SkinPreset.Makena => EnsureAssetFile("makena-skin.png"),
+            SkinPreset.Noor => EnsureAssetFile("noor-skin.png"),
+            SkinPreset.Sunny => EnsureAssetFile("sunny-skin.png"),
+            SkinPreset.Zuri => EnsureAssetFile("zuri-skin.png"),
             _ => null
         };
 
@@ -221,7 +221,7 @@ public class SkinService
     {
         if (!IsStandardSkinId(id))
             return null;
-        return FindAssetPath($"{id!.Trim().ToLowerInvariant()}-skin.png");
+        return EnsureAssetFile($"{id!.Trim().ToLowerInvariant()}-skin.png");
     }
 
     public string SaveCustomSkin(string sourcePath)
@@ -449,6 +449,52 @@ public class SkinService
         }
     }
 
+    /// <summary>
+    /// Resolves a nick or direct PNG URL into a local temp skin file for preview/upload.
+    /// </summary>
+    public async Task<(string Path, bool IsSlim)?> ImportSkinFromNickOrUrlAsync(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return null;
+
+        var text = input.Trim();
+        string url;
+        var preferSlim = false;
+
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        {
+            url = uri.ToString();
+        }
+        else if (OfflineUsernameHelper.IsValid(text))
+        {
+            url = $"https://mc-heads.net/skin/{Uri.EscapeDataString(text)}";
+            preferSlim = false;
+        }
+        else
+        {
+            throw new InvalidOperationException(LocalizationService.T("skin.import_invalid"));
+        }
+
+        using var response = await AppHttp.Client.GetAsync(url);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(LocalizationService.T("skin.import_failed"));
+
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        var tempPath = Path.Combine(Path.GetTempPath(), "apeiron-skin-import-" + Guid.NewGuid().ToString("N") + ".png");
+        await File.WriteAllBytesAsync(tempPath, bytes);
+
+        if (!TryValidateSkinFile(tempPath, out var error))
+        {
+            try { File.Delete(tempPath); } catch { }
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(error)
+                ? LocalizationService.T("skin.import_failed")
+                : error);
+        }
+
+        return (tempPath, preferSlim);
+    }
+
     private static string? FindActiveSkinUrl(System.Text.Json.JsonElement root) =>
         TryFindActiveSkin(root, out var url, out _) ? url : null;
 
@@ -606,11 +652,46 @@ public class SkinService
 
     private static BitmapImage? LoadAssetAvatar(string fileName)
     {
-        var path = FindAssetPath(fileName);
+        using var stream = OpenEmbeddedAsset(fileName);
+        if (stream != null)
+            return LoadBitmapFromStream(stream);
+
+        var path = FindLooseAssetPath(fileName);
         return path == null ? null : LoadBitmapFromFile(path);
     }
 
-    private static string? FindAssetPath(string fileName)
+    private string? EnsureAssetFile(string fileName)
+    {
+        var destDir = Path.Combine(_cacheDir, "presets");
+        Directory.CreateDirectory(destDir);
+        var dest = Path.Combine(destDir, fileName);
+
+        if (File.Exists(dest))
+            return dest;
+
+        using var stream = OpenEmbeddedAsset(fileName);
+        if (stream != null)
+        {
+            using var fs = File.Create(dest);
+            stream.CopyTo(fs);
+            return dest;
+        }
+
+        var loose = FindLooseAssetPath(fileName);
+        if (loose == null)
+            return null;
+
+        File.Copy(loose, dest, overwrite: true);
+        return dest;
+    }
+
+    private static Stream? OpenEmbeddedAsset(string fileName)
+    {
+        var asm = typeof(SkinService).Assembly;
+        return asm.GetManifestResourceStream($"Apeiron.Assets.{fileName}");
+    }
+
+    private static string? FindLooseAssetPath(string fileName)
     {
         var candidates = new[]
         {
@@ -625,6 +706,30 @@ public class SkinService
         }
 
         return null;
+    }
+
+    private static BitmapImage? LoadBitmapFromStream(Stream stream)
+    {
+        try
+        {
+            // Copy first: BitmapImage needs a seekable stream, and
+            // BitmapCreateOptions.IgnoreImageCache throws when UriSource is null.
+            using var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            ms.Position = 0;
+
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.StreamSource = ms;
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static BitmapImage? LoadBitmapFromFile(string path)
@@ -644,6 +749,20 @@ public class SkinService
         {
             return null;
         }
+    }
+
+    public BitmapImage? LoadStandardSkinBitmap(string? id)
+    {
+        if (!IsStandardSkinId(id))
+            return null;
+
+        var fileName = $"{id!.Trim().ToLowerInvariant()}-skin.png";
+        using var stream = OpenEmbeddedAsset(fileName);
+        if (stream != null)
+            return LoadBitmapFromStream(stream);
+
+        var path = EnsureAssetFile(fileName);
+        return path == null ? null : LoadBitmapFromFile(path);
     }
 
     private static async Task<BitmapImage?> LoadSkinFromMcHeads(string uuid, string cachePath)

@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 
 namespace Apeiron.Services;
 
-public sealed class LocalizationService : INotifyPropertyChanged
+public sealed partial class LocalizationService : INotifyPropertyChanged
 {
     public static LocalizationService Instance { get; } = new();
 
@@ -26,7 +26,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
 
     public string this[string key] => Get(key);
 
-    private static readonly Dictionary<string, string> En = new()
+        private static readonly Dictionary<string, string> En = new()
     {
         ["common.cancel"] = "Cancel",
         ["common.save"] = "Save",
@@ -38,11 +38,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["common.mods"] = "Mods",
         ["common.yes"] = "Yes",
         ["common.no"] = "No",
-
         ["lang.auto"] = "Auto (system)",
         ["lang.en"] = "English",
         ["lang.ru"] = "Russian",
-
+        ["lang.zh"] = "Chinese",
         ["main.window_title"] = "Apeiron Launcher",
         ["main.settings_tooltip"] = "Settings",
         ["main.theme_light"] = "Light theme",
@@ -74,7 +73,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["skin.apply"] = "Apply",
         ["skin.applying"] = "Applying...",
         ["skin.hint_online"] = "The skin will be uploaded to your Microsoft account and used in Minecraft.",
-        ["skin.hint_offline"] = "For offline mode the skin is shown in the launcher. Vanilla Minecraft offline still uses the default skin.",
+        ["skin.hint_offline"] = "Offline: the skin is shown in the launcher and applied in-game via a resource pack (and CustomSkinLoader if that mod is installed). Pure vanilla offline may still show the default skin.",
         ["skin.file_missing"] = "Skin file not found.",
         ["skin.file_invalid"] = "Could not read this PNG file.",
         ["skin.file_size"] = "Skin must be 64×64, 64×32, 128×128 or 128×64 PNG.",
@@ -82,16 +81,23 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["skin.upload_failed"] = "Skin upload failed: {0}",
         ["skin.applied_console"] = "Skin updated.",
         ["skin.drag_hint"] = "Drag to rotate",
+        ["skin.bg_label"] = "Preview background",
+        ["skin.bg_custom"] = "Custom…",
         ["skin.history"] = "Account skins",
         ["skin.history_loading"] = "Loading account skins...",
         ["skin.history_selected"] = "Previous account skin",
         ["skin.current_account"] = "Current account skin",
+        ["skin.import"] = "Import",
+        ["skin.import_hint"] = "Player name or skin PNG URL",
+        ["skin.import_invalid"] = "Enter a valid player name or http(s) URL.",
+        ["skin.import_failed"] = "Could not download that skin.",
+        ["skin.webview2_missing"] = "Microsoft Edge WebView2 Runtime is required for skins and Microsoft sign-in.\n\nOpen the download page now?",
+        ["skin.webview2_missing_title"] = "WebView2 required",
         ["main.builds"] = "📦 Instances",
         ["main.add_build_tooltip"] = "Create a new instance",
         ["main.add_build_button"] = "Create",
         ["main.edit_build_tooltip"] = "Edit selected instance",
         ["main.edit_build_button"] = "Edit",
-        ["main.import_modpack_button"] = "Modpack",
         ["main.console"] = "📟 Console",
         ["main.play"] = "Play",
         ["main.download"] = "Download",
@@ -165,12 +171,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["main.install_failed_open_log"] = "Installation failed. Open the log file?",
         ["main.microsoft_account"] = "Microsoft Account",
         ["main.offline_only_mode"] = "Offline mode",
-        ["main.import_modpack_tooltip"] = "Import modpack (new instance) — or drag .zip here",
-        ["main.modpack_imported"] = "📦 Modpack imported: {0}",
-        ["main.modpack_configure_hint"] = "Set Minecraft version and loader in instance settings, then install.",
-        ["main.modpack_drop_invalid"] = "Drop a .zip modpack file to import a new instance.",
         ["main.modpack_install_failed"] = "Modpack install failed: {0}",
-
         ["settings.title"] = "Settings",
         ["settings.ram"] = "RAM (GB)",
         ["settings.language"] = "Language",
@@ -188,12 +189,61 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["settings.offline_only"] = "Offline mode only (hide Microsoft sign-in)",
         ["settings.check_updates"] = "Check for updates on startup",
         ["settings.check_updates_now"] = "Check for updates",
+        ["settings.tray"] = "Minimize to tray (close button hides the window)",
+        ["settings.close_on_launch"] = "Close launcher when the game starts",
+        ["tray.open"] = "Open Apeiron",
+        ["tray.exit"] = "Exit",
+        ["settings.jvm_profile"] = "JVM profile",
         ["settings.curseforge_key"] = "CurseForge key",
         ["settings.curseforge_key_hint"] = "Required for CurseForge modpacks. Free key: console.curseforge.com",
         ["settings.update_not_configured"] = "Update source is not configured in this build.",
         ["settings.update_none"] = "You are running the latest version.",
         ["settings.update_available"] = "Version {0} is available (current: {1}).\n\nDownload and restart now?",
-
+        ["settings.mc_restart_hint"] = "Minecraft folder changes apply after restarting the launcher.",
+        ["jvm.profile.default"] = "Default",
+        ["jvm.profile.performance"] = "Performance",
+        ["jvm.profile.low_latency"] = "Low latency",
+        ["jvm.profile.debug"] = "Debug / GC logs",
+        ["verify.title"] = "Verify files",
+        ["verify.checking"] = "Checking game files…",
+        ["verify.done"] = "Verification finished",
+        ["verify.failed"] = "Verification failed",
+        ["verify.reinstalled"] = "Missing profile was reinstalled",
+        ["verify.profile_missing"] = "Version profile {0} is missing",
+        ["verify.repairing"] = "Repairing {0}…",
+        ["verify.assets_bad"] = "Broken or missing assets: {0}",
+        ["verify.summary"] = "Checked {0}, repaired {1}, missing {2}",
+        ["verify.start"] = "Verifying {0}…",
+        ["onboard.window_title"] = "Welcome to Apeiron",
+        ["onboard.title"] = "Welcome",
+        ["onboard.intro"] = "Pick a language, then create your first instance or skip. Sign in with Microsoft anytime — or just play offline.",
+        ["onboard.create_instance"] = "Create first instance",
+        ["onboard.skip"] = "Skip",
+        ["mod_browser.window_title"] = "Mods catalog",
+        ["mod_browser.title"] = "Browse mods",
+        ["mod_browser.search"] = "Search",
+        ["mod_browser.search_hint"] = "Mod name…",
+        ["mod_browser.list"] = "Popular mods",
+        ["mod_browser.refresh"] = "Refresh list",
+        ["mod_browser.install"] = "Install",
+        ["mod_browser.searching"] = "Searching…",
+        ["mod_browser.installing"] = "Installing…",
+        ["mod_browser.no_results"] = "No mods found",
+        ["mod_browser.results"] = "Found: {0}",
+        ["mod_browser.install_done"] = "Mod installed",
+        ["mod_browser.installed"] = "Mod installed into {0}",
+        ["main.launch_last_missing"] = "No last-played instance to launch.",
+        ["main.webview2_missing"] = "Microsoft Edge WebView2 Runtime is missing. Skins and Microsoft sign-in will not work until it is installed.",
+        ["main.webview2_missing_title"] = "WebView2 required",
+        ["main.webview2_download"] = "Download WebView2",
+        ["offline_skin.applied"] = "Offline skin pack prepared for this instance.",
+        ["offline_skin.none"] = "No offline skin file selected; using defaults.",
+        ["offline_skin.error"] = "Offline skin setup failed: {0}",
+        ["edit_build.game_log"] = "Game log",
+        ["edit_build.game_log_tooltip"] = "Open latest.log for this instance",
+        ["edit_build.crashes"] = "Crashes",
+        ["edit_build.crashes_tooltip"] = "Open crash-reports folder",
+        ["edit_build.game_log_missing"] = "No latest.log yet. Launch the game once first.",
         ["add_build.title"] = "New instance",
         ["add_build.window_title"] = "Create instance",
         ["add_build.name"] = "Name",
@@ -249,7 +299,6 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["add_build.type.beta"] = "beta",
         ["add_build.type.alpha"] = "alpha",
         ["add_build.type.prerelease"] = "pre-release",
-
         ["edit_build.title"] = "Edit instance",
         ["edit_build.window_title"] = "Edit instance",
         ["edit_build.name"] = "Name",
@@ -299,7 +348,14 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["edit_build.backup_tooltip"] = "Export mods, config, and saves",
         ["edit_build.backup_title"] = "Full instance backup",
         ["edit_build.backup_done"] = "Full backup exported successfully.",
-
+        ["edit_build.verify"] = "Verify files",
+        ["edit_build.mod_browser"] = "Browse mods catalog",
+        ["edit_build.set_icon"] = "Set icon",
+        ["edit_build.resourcepacks"] = "Resource packs folder",
+        ["edit_build.shaderpacks"] = "Shader packs folder",
+        ["edit_build.icon_filter"] = "Images (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg",
+        ["edit_build.icon_set"] = "Instance icon updated.",
+        ["edit_build.packs_count"] = "Packs in folder: {0}",
         ["auth.title"] = "Microsoft sign-in",
         ["auth.processing"] = "Completing sign-in...",
         ["auth.heading"] = "🔐 Sign in with Microsoft",
@@ -320,12 +376,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["auth.mc_auth_error"] = "Minecraft sign-in error",
         ["auth.profile_error"] = "Failed to get profile",
         ["auth.default_player"] = "Player",
-
         ["build.copy_suffix"] = " (copy)",
         ["build.duplicate_exists"] = "An instance named «{0}» already exists",
         ["build.not_found"] = "Instance not found",
         ["build.delete_folder_failed"] = "Failed to delete instance folder: {0}",
-
         ["java.install_prompt"] = "Java 25 is required for Minecraft 26.1!\n\nInstall Java 25 automatically?",
         ["java.install_title"] = "Java required",
         ["java.installed_restart"] = "Java 25 installed!\nThe launcher will restart.",
@@ -336,7 +390,6 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["java.installed_system"] = "Java {0} installed on Windows. It is available to all programs.",
         ["auth.token_load_error"] = "Error loading token: {0}",
         ["auth.token_save_error"] = "Error saving token: {0}",
-
         ["log.download_file"] = "Downloading {0}...",
         ["log.mc.launcher_dir"] = "📁 Launcher folder: {0}",
         ["log.mc.minecraft_dir"] = "📁 Minecraft folder: {0}",
@@ -436,7 +489,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["log.settings.save_error"] = "Failed to save settings: {0}",
     };
 
-    private static readonly Dictionary<string, string> Ru = new()
+        private static readonly Dictionary<string, string> Ru = new()
     {
         ["common.cancel"] = "Отмена",
         ["common.save"] = "Сохранить",
@@ -448,11 +501,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["common.mods"] = "Моды",
         ["common.yes"] = "Да",
         ["common.no"] = "Нет",
-
         ["lang.auto"] = "Авто (система)",
         ["lang.en"] = "English",
         ["lang.ru"] = "Русский",
-
+        ["lang.zh"] = "Китайский",
         ["main.window_title"] = "Apeiron Launcher",
         ["main.settings_tooltip"] = "Настройки",
         ["main.theme_light"] = "Светлая тема",
@@ -484,7 +536,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["skin.apply"] = "Применить",
         ["skin.applying"] = "Применение...",
         ["skin.hint_online"] = "Скин будет загружен в ваш аккаунт Microsoft и появится в Minecraft.",
-        ["skin.hint_offline"] = "В офлайне скин показывается в лаунчере. В ванильном Minecraft офлайн всё равно использует стандартный скин.",
+        ["skin.hint_offline"] = "Офлайн: скин виден в лаунчере и применяется в игре через ресурспак (и CustomSkinLoader, если мод установлен). Чистая ваниль офлайн может всё ещё показать стандартный скин.",
         ["skin.file_missing"] = "Файл скина не найден.",
         ["skin.file_invalid"] = "Не удалось прочитать этот PNG.",
         ["skin.file_size"] = "Скин должен быть PNG 64×64, 64×32, 128×128 или 128×64.",
@@ -492,16 +544,23 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["skin.upload_failed"] = "Не удалось загрузить скин: {0}",
         ["skin.applied_console"] = "Скин обновлён.",
         ["skin.drag_hint"] = "Тяните, чтобы вращать",
+        ["skin.bg_label"] = "Фон превью",
+        ["skin.bg_custom"] = "Свой…",
         ["skin.history"] = "Скины аккаунта",
         ["skin.history_loading"] = "Загрузка скинов аккаунта...",
         ["skin.history_selected"] = "Ранее использованный скин",
         ["skin.current_account"] = "Текущий скин аккаунта",
+        ["skin.import"] = "Импорт",
+        ["skin.import_hint"] = "Ник игрока или URL PNG скина",
+        ["skin.import_invalid"] = "Введите ник игрока или http(s) URL.",
+        ["skin.import_failed"] = "Не удалось скачать этот скин.",
+        ["skin.webview2_missing"] = "Для скинов и входа Microsoft нужен Microsoft Edge WebView2 Runtime.\n\nОткрыть страницу загрузки?",
+        ["skin.webview2_missing_title"] = "Нужен WebView2",
         ["main.builds"] = "📦 Сборки",
         ["main.add_build_tooltip"] = "Создать новую сборку",
         ["main.add_build_button"] = "Создать",
         ["main.edit_build_tooltip"] = "Редактировать выбранную сборку",
         ["main.edit_build_button"] = "Изменить",
-        ["main.import_modpack_button"] = "Модпак",
         ["main.console"] = "📟 Консоль",
         ["main.play"] = "Играть",
         ["main.download"] = "Скачать",
@@ -575,12 +634,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["main.install_failed_open_log"] = "Ошибка установки. Открыть файл лога?",
         ["main.microsoft_account"] = "Аккаунт Microsoft",
         ["main.offline_only_mode"] = "Офлайн-режим",
-        ["main.import_modpack_tooltip"] = "Импорт модпака (новая сборка) — или перетащите .zip",
-        ["main.modpack_imported"] = "📦 Модпак импортирован: {0}",
-        ["main.modpack_configure_hint"] = "Укажите версию Minecraft и лоадер в настройках сборки, затем установите.",
-        ["main.modpack_drop_invalid"] = "Перетащите .zip модпака для импорта новой сборки.",
         ["main.modpack_install_failed"] = "Ошибка установки модпака: {0}",
-
         ["settings.title"] = "Настройки",
         ["settings.ram"] = "RAM (ГБ)",
         ["settings.language"] = "Язык",
@@ -598,12 +652,61 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["settings.offline_only"] = "Только офлайн (скрыть вход Microsoft)",
         ["settings.check_updates"] = "Проверять обновления при запуске",
         ["settings.check_updates_now"] = "Проверить обновления",
+        ["settings.tray"] = "Сворачивать в трей (крестик скрывает окно)",
+        ["settings.close_on_launch"] = "Закрывать лаунчер при запуске игры",
+        ["tray.open"] = "Открыть Apeiron",
+        ["tray.exit"] = "Выход",
+        ["settings.jvm_profile"] = "JVM-профиль",
         ["settings.curseforge_key"] = "Ключ CurseForge",
         ["settings.curseforge_key_hint"] = "Нужен для модпаков CurseForge. Бесплатный ключ: console.curseforge.com",
         ["settings.update_not_configured"] = "Источник обновлений не настроен в этой сборке.",
         ["settings.update_none"] = "Установлена последняя версия.",
         ["settings.update_available"] = "Доступна версия {0} (текущая: {1}).\n\nСкачать и перезапустить?",
-
+        ["settings.mc_restart_hint"] = "Смена папки Minecraft применится после перезапуска лаунчера.",
+        ["jvm.profile.default"] = "По умолчанию",
+        ["jvm.profile.performance"] = "Производительность",
+        ["jvm.profile.low_latency"] = "Низкая задержка",
+        ["jvm.profile.debug"] = "Отладка / логи GC",
+        ["verify.title"] = "Проверка файлов",
+        ["verify.checking"] = "Проверка файлов игры…",
+        ["verify.done"] = "Проверка завершена",
+        ["verify.failed"] = "Проверка не удалась",
+        ["verify.reinstalled"] = "Отсутствующий профиль переустановлен",
+        ["verify.profile_missing"] = "Профиль версии {0} отсутствует",
+        ["verify.repairing"] = "Восстановление {0}…",
+        ["verify.assets_bad"] = "Повреждённые или отсутствующие ассеты: {0}",
+        ["verify.summary"] = "Проверено {0}, восстановлено {1}, отсутствует {2}",
+        ["verify.start"] = "Проверка {0}…",
+        ["onboard.window_title"] = "Добро пожаловать в Apeiron",
+        ["onboard.title"] = "Добро пожаловать",
+        ["onboard.intro"] = "Выберите язык, затем создайте первую сборку или пропустите. Войти через Microsoft можно в любой момент — или играть офлайн без входа.",
+        ["onboard.create_instance"] = "Создать первую сборку",
+        ["onboard.skip"] = "Пропустить",
+        ["mod_browser.window_title"] = "Каталог модов",
+        ["mod_browser.title"] = "Поиск модов",
+        ["mod_browser.search"] = "Поиск",
+        ["mod_browser.search_hint"] = "Название мода…",
+        ["mod_browser.list"] = "Популярные моды",
+        ["mod_browser.refresh"] = "Обновить список",
+        ["mod_browser.install"] = "Установить",
+        ["mod_browser.searching"] = "Поиск…",
+        ["mod_browser.installing"] = "Установка…",
+        ["mod_browser.no_results"] = "Моды не найдены",
+        ["mod_browser.results"] = "Найдено: {0}",
+        ["mod_browser.install_done"] = "Мод установлен",
+        ["mod_browser.installed"] = "Мод установлен в {0}",
+        ["main.launch_last_missing"] = "Нет последней запущенной сборки.",
+        ["main.webview2_missing"] = "Не найден Microsoft Edge WebView2 Runtime. Скины и вход Microsoft не будут работать, пока его не установят.",
+        ["main.webview2_missing_title"] = "Нужен WebView2",
+        ["main.webview2_download"] = "Скачать WebView2",
+        ["offline_skin.applied"] = "Офлайн-скин подготовлен для этой сборки.",
+        ["offline_skin.none"] = "Файл офлайн-скина не выбран — будут стандартные.",
+        ["offline_skin.error"] = "Не удалось подготовить офлайн-скин: {0}",
+        ["edit_build.game_log"] = "Лог игры",
+        ["edit_build.game_log_tooltip"] = "Открыть latest.log этой сборки",
+        ["edit_build.crashes"] = "Краши",
+        ["edit_build.crashes_tooltip"] = "Открыть папку crash-reports",
+        ["edit_build.game_log_missing"] = "Пока нет latest.log. Сначала запустите игру.",
         ["add_build.title"] = "Новая сборка",
         ["add_build.window_title"] = "Создание сборки",
         ["add_build.name"] = "Название",
@@ -659,7 +762,6 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["add_build.type.beta"] = "beta",
         ["add_build.type.alpha"] = "alpha",
         ["add_build.type.prerelease"] = "pre-release",
-
         ["edit_build.title"] = "Редактирование сборки",
         ["edit_build.window_title"] = "Редактирование сборки",
         ["edit_build.name"] = "Название",
@@ -709,7 +811,14 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["edit_build.backup_tooltip"] = "Экспорт модов, конфига и миров",
         ["edit_build.backup_title"] = "Полный бэкап сборки",
         ["edit_build.backup_done"] = "Полный бэкап экспортирован.",
-
+        ["edit_build.verify"] = "Проверить файлы",
+        ["edit_build.mod_browser"] = "Каталог модов",
+        ["edit_build.set_icon"] = "Иконка",
+        ["edit_build.resourcepacks"] = "Ресурспаки",
+        ["edit_build.shaderpacks"] = "Шейдерпаки",
+        ["edit_build.icon_filter"] = "Изображения (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg",
+        ["edit_build.icon_set"] = "Иконка сборки обновлена.",
+        ["edit_build.packs_count"] = "Паков в папке: {0}",
         ["auth.title"] = "Авторизация Microsoft",
         ["auth.processing"] = "Завершение входа...",
         ["auth.heading"] = "🔐 Вход через Microsoft",
@@ -730,12 +839,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["auth.mc_auth_error"] = "Ошибка Minecraft авторизации",
         ["auth.profile_error"] = "Ошибка получения профиля",
         ["auth.default_player"] = "Игрок",
-
         ["build.copy_suffix"] = " (копия)",
         ["build.duplicate_exists"] = "Сборка с именем «{0}» уже существует",
         ["build.not_found"] = "Сборка не найдена",
         ["build.delete_folder_failed"] = "Не удалось удалить папку сборки: {0}",
-
         ["java.install_prompt"] = "Для Minecraft 26.1 требуется Java 25!\n\nУстановить Java 25 автоматически?",
         ["java.install_title"] = "Требуется Java",
         ["java.installed_restart"] = "Java 25 установлена!\nЛаунчер будет перезапущен.",
@@ -746,7 +853,6 @@ public sealed class LocalizationService : INotifyPropertyChanged
         ["java.installed_system"] = "Java {0} установлена в Windows. Доступна всем программам.",
         ["auth.token_load_error"] = "Ошибка загрузки токена: {0}",
         ["auth.token_save_error"] = "Ошибка сохранения токена: {0}",
-
         ["log.download_file"] = "Скачивание {0}...",
         ["log.mc.launcher_dir"] = "📁 Папка лаунчера: {0}",
         ["log.mc.minecraft_dir"] = "📁 Папка Minecraft: {0}",
@@ -856,22 +962,35 @@ public sealed class LocalizationService : INotifyPropertyChanged
     public void ApplySetting(string setting)
     {
         Setting = string.IsNullOrWhiteSpace(setting) ? "auto" : setting.Trim().ToLowerInvariant();
+        if (Setting == "uk")
+            Setting = "auto";
         _effective = ResolveEffectiveLanguage(Setting);
         NotifyChanged();
     }
 
     public static string ResolveEffectiveLanguage(string setting)
     {
-        if (setting is "en" or "ru")
+        if (setting is "en" or "ru" or "zh")
             return setting;
 
         var culture = CultureInfo.CurrentUICulture;
-        return culture.TwoLetterISOLanguageName.Equals("ru", StringComparison.OrdinalIgnoreCase) ? "ru" : "en";
+        var two = culture.TwoLetterISOLanguageName;
+        if (two.Equals("ru", StringComparison.OrdinalIgnoreCase))
+            return "ru";
+        if (two.Equals("zh", StringComparison.OrdinalIgnoreCase) ||
+            culture.Name.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+            return "zh";
+        return "en";
     }
 
     public string Get(string key)
     {
-        var table = _effective == "ru" ? Ru : En;
+        var table = _effective switch
+        {
+            "ru" => Ru,
+            "zh" => Zh,
+            _ => En
+        };
         if (table.TryGetValue(key, out var value))
             return value;
         return En.TryGetValue(key, out var fallback) ? fallback : key;

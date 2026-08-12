@@ -18,8 +18,48 @@ public sealed class AccountSummary
 
 public class AuthService
 {
-    private static readonly HttpClient Http = AppHttp.Client;
-    private const string ClientId = "00000000402b5328";
+    public const string ClientId = "00000000402b5328";
+    public const string RedirectUri = "https://login.live.com/oauth20_desktop.srf";
+
+    public static string BuildAuthorizeUrl() =>
+        "https://login.live.com/oauth20_authorize.srf?" +
+        $"client_id={ClientId}" +
+        "&response_type=code" +
+        $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}" +
+        "&scope=XboxLive.signin%20offline_access" +
+        "&response_mode=query";
+
+    /// <summary>Extracts OAuth code from a pasted redirect URL or raw code string.</summary>
+    public static string? TryExtractAuthCode(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var trimmed = text.Trim().Trim('"', '\'');
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            var code = System.Web.HttpUtility.ParseQueryString(uri.Query).Get("code");
+            if (!string.IsNullOrWhiteSpace(code))
+                return code;
+        }
+
+        if (trimmed.Contains('=', StringComparison.Ordinal) &&
+            trimmed.Contains("code=", StringComparison.OrdinalIgnoreCase))
+        {
+            var query = trimmed.Contains('?', StringComparison.Ordinal)
+                ? trimmed[(trimmed.IndexOf('?', StringComparison.Ordinal) + 1)..]
+                : trimmed;
+            var code = System.Web.HttpUtility.ParseQueryString(query).Get("code");
+            if (!string.IsNullOrWhiteSpace(code))
+                return code;
+        }
+
+        // Raw authorization code (no URL).
+        if (trimmed.Length >= 20 && trimmed.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.'))
+            return trimmed;
+
+        return null;
+    }
 
     private string? _accessToken;
     private string? _refreshToken;
@@ -181,14 +221,14 @@ public class AuthService
             {
                 ["client_id"] = ClientId,
                 ["code"] = code,
-                ["redirect_uri"] = "https://login.live.com/oauth20_desktop.srf",
+                ["redirect_uri"] = RedirectUri,
                 ["grant_type"] = "authorization_code"
             });
 
             tokenContent.Headers.Clear();
             tokenContent.Headers.Add("Content-Type", "application/x-www-form-urlencoded");
 
-            var tokenResponse = await Http.PostAsync(
+            var tokenResponse = await AppHttp.Client.PostAsync(
                 "https://login.live.com/oauth20_token.srf",
                 tokenContent
             );
@@ -287,7 +327,7 @@ public class AuthService
                 HttpMethod.Get,
                 "https://api.minecraftservices.com/minecraft/profile");
             request.Headers.Add("Authorization", $"Bearer {_accessToken}");
-            var response = await Http.SendAsync(request);
+            var response = await AppHttp.Client.SendAsync(request);
             return response.IsSuccessStatusCode;
         }
         catch
@@ -313,7 +353,7 @@ public class AuthService
             tokenContent.Headers.Clear();
             tokenContent.Headers.Add("Content-Type", "application/x-www-form-urlencoded");
 
-            var tokenResponse = await Http.PostAsync(
+            var tokenResponse = await AppHttp.Client.PostAsync(
                 "https://login.live.com/oauth20_token.srf",
                 tokenContent);
 
@@ -354,7 +394,7 @@ public class AuthService
                 "application/json"
             );
 
-            var xblResponse = await Http.PostAsync(
+            var xblResponse = await AppHttp.Client.PostAsync(
                 "https://user.auth.xboxlive.com/user/authenticate",
                 xblContent
             );
@@ -389,7 +429,7 @@ public class AuthService
                 "application/json"
             );
 
-            var xstsResponse = await Http.PostAsync(
+            var xstsResponse = await AppHttp.Client.PostAsync(
                 "https://xsts.auth.xboxlive.com/xsts/authorize",
                 xstsContent
             );
@@ -410,7 +450,7 @@ public class AuthService
                 "application/json"
             );
 
-            var mcResponse = await Http.PostAsync(
+            var mcResponse = await AppHttp.Client.PostAsync(
                 "https://api.minecraftservices.com/authentication/login_with_xbox",
                 mcContent
             );
@@ -430,7 +470,7 @@ public class AuthService
                 "https://api.minecraftservices.com/minecraft/profile"
             );
             profileRequest.Headers.Add("Authorization", $"Bearer {_accessToken}");
-            var profileResponse = await Http.SendAsync(profileRequest);
+            var profileResponse = await AppHttp.Client.SendAsync(profileRequest);
 
             if (!profileResponse.IsSuccessStatusCode)
             {

@@ -45,7 +45,8 @@ public class VersionLauncher
         string uuid,
         string accessToken,
         int ramGb,
-        string? javaPath = null)
+        string? javaPath = null,
+        string? jvmProfile = null)
     {
         try
         {
@@ -125,7 +126,7 @@ public class VersionLauncher
             var arguments = merged["arguments"] as JObject;
             var jvmArgsToken = arguments?["jvm"] ?? arguments?["default-user-jvm"];
             AppendArguments(processArgs, jvmArgsToken, substitutionVars, features, skipMemoryFlags: true);
-            AppendCustomJvmArgs(processArgs, build.JvmArgs);
+            AppendCustomJvmArgs(processArgs, JvmProfileHelper.MergeWithCustom(jvmProfile, build.JvmArgs));
 
             var javaMajor = JavaService.DetectJavaMajor(javaPath);
             FilterUnsupportedJvmArgs(processArgs, javaMajor);

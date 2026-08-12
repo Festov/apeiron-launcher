@@ -17,6 +17,7 @@ public sealed class CurseForgeModpackService
 {
     public const int MinecraftGameId = 432;
     public const int ModpackClassId = 4471;
+    public const int ModClassId = 6;
 
     private const string BaseUrl = "https://api.curseforge.com/v1";
     private readonly string _apiKey;
@@ -39,7 +40,7 @@ public sealed class CurseForgeModpackService
             AllowAutoRedirect = false,
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             ConnectTimeout = TimeSpan.FromSeconds(45),
-            MaxConnectionsPerServer = 8,
+            MaxConnectionsPerServer = 16,
             UseProxy = true,
             DefaultProxyCredentials = CredentialCache.DefaultCredentials,
             SslOptions = new SslClientAuthenticationOptions
@@ -53,10 +54,23 @@ public sealed class CurseForgeModpackService
         return client;
     }
 
-    public async Task<IReadOnlyList<ModpackListItem>> SearchPopularAsync(
+    public Task<IReadOnlyList<ModpackListItem>> SearchPopularAsync(
         string? query = null,
         int limit = 100,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SearchByClassAsync(ModpackClassId, query, limit, cancellationToken);
+
+    public Task<IReadOnlyList<ModpackListItem>> SearchModsAsync(
+        string? query = null,
+        int limit = 40,
+        CancellationToken cancellationToken = default) =>
+        SearchByClassAsync(ModClassId, query, limit, cancellationToken);
+
+    private async Task<IReadOnlyList<ModpackListItem>> SearchByClassAsync(
+        int classId,
+        string? query,
+        int limit,
+        CancellationToken cancellationToken)
     {
         EnsureApiKey();
 
@@ -69,9 +83,8 @@ public sealed class CurseForgeModpackService
         while (results.Count < target)
         {
             var pageSize = Math.Min(maxPage, target - results.Count);
-            // sortField=2 Popularity, sortOrder=desc
             var url =
-                $"{BaseUrl}/mods/search?gameId={MinecraftGameId}&classId={ModpackClassId}" +
+                $"{BaseUrl}/mods/search?gameId={MinecraftGameId}&classId={classId}" +
                 $"&sortField=2&sortOrder=desc&pageSize={pageSize}&index={index}{search}";
 
             var json = await GetStringAsync(url, cancellationToken);
@@ -80,23 +93,21 @@ public sealed class CurseForgeModpackService
             if (data == null || data.Count == 0)
                 break;
 
-            var page = data
-                .OfType<JObject>()
-                .Select(ParseMod)
-                .Where(item => !string.IsNullOrWhiteSpace(item.Id))
-                .ToList();
+            foreach (var item in data.OfType<JObject>())
+            {
+                var parsed = ParseMod(item);
+                if (!string.IsNullOrWhiteSpace(parsed.Id))
+                    results.Add(parsed);
+                if (results.Count >= target)
+                    break;
+            }
 
-            if (page.Count == 0)
+            if (data.Count < pageSize)
                 break;
-
-            results.AddRange(page);
-            index += page.Count;
-
-            if (page.Count < pageSize)
-                break;
+            index += pageSize;
         }
 
-        return results.Count > target ? results.Take(target).ToList() : results;
+        return results;
     }
 
     public async Task<(int ModId, int FileId, string FileName, string DownloadUrl)> ResolveLatestPackFileAsync(
@@ -117,6 +128,39 @@ public sealed class CurseForgeModpackService
 
         var fileId = file["id"]?.Value<int>() ?? 0;
         var fileName = file["fileName"]?.ToString() ?? $"{modId}.zip";
+        var downloadUrl = file["downloadUrl"]?.ToString();
+
+        if (string.IsNullOrWhiteSpace(downloadUrl))
+            downloadUrl = await GetDownloadUrlAsync(modId, fileId, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(downloadUrl))
+            downloadUrl = BuildCdnDownloadUrl(fileId, fileName);
+
+        if (string.IsNullOrWhiteSpace(downloadUrl) || fileId == 0)
+            throw new InvalidOperationException(LocalizationService.T("add_build.modpack.download_url_missing"));
+
+        return (modId, fileId, fileName, downloadUrl!);
+    }
+
+    public async Task<(int ModId, int FileId, string FileName, string DownloadUrl)> ResolveLatestModFileAsync(
+        int modId,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureApiKey();
+
+        var url = $"{BaseUrl}/mods/{modId}/files?pageSize=20";
+        var json = await GetStringAsync(url, cancellationToken);
+        var root = JObject.Parse(json);
+        var data = root["data"] as JArray;
+        var file = data?.OfType<JObject>().FirstOrDefault(IsJarFile)
+            ?? data?.OfType<JObject>().FirstOrDefault(f => !IsPackFile(f))
+            ?? data?.OfType<JObject>().FirstOrDefault();
+
+        if (file == null)
+            throw new InvalidOperationException(LocalizationService.T("add_build.modpack.no_versions"));
+
+        var fileId = file["id"]?.Value<int>() ?? 0;
+        var fileName = file["fileName"]?.ToString() ?? $"{modId}.jar";
         var downloadUrl = file["downloadUrl"]?.ToString();
 
         if (string.IsNullOrWhiteSpace(downloadUrl))
@@ -376,7 +420,7 @@ public sealed class CurseForgeModpackService
             {
                 await using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken))
                 await using (var file = File.Create(tempPath))
-                    await stream.CopyToAsync(file, cancellationToken);
+                    await stream.CopyToAsync(file, 256 * 1024, cancellationToken);
 
                 if (File.Exists(destinationPath))
                     File.Delete(destinationPath);
@@ -499,6 +543,12 @@ public sealed class CurseForgeModpackService
     {
         var name = file["fileName"]?.ToString() ?? "";
         return name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsJarFile(JObject file)
+    {
+        var name = file["fileName"]?.ToString() ?? "";
+        return name.EndsWith(".jar", StringComparison.OrdinalIgnoreCase);
     }
 
     private static ModpackListItem ParseMod(JObject mod)

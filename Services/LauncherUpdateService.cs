@@ -11,6 +11,13 @@ using System.Threading.Tasks;
 
 namespace Apeiron.Services;
 
+public enum LauncherUpdateKind
+{
+    Zip,
+    Exe,
+    Patch
+}
+
 public sealed class LauncherUpdateInfo
 {
     public Version LatestVersion { get; init; } = new(0, 0);
@@ -18,6 +25,7 @@ public sealed class LauncherUpdateInfo
     public string? ExpectedSha256 { get; init; }
     public string ReleasePageUrl { get; init; } = "";
     public string ReleaseNotes { get; init; } = "";
+    public LauncherUpdateKind Kind { get; init; } = LauncherUpdateKind.Zip;
 }
 
 public static class LauncherUpdateService
@@ -63,6 +71,45 @@ public static class LauncherUpdateService
         if (!IsNewerVersion(latestVersion, current))
             return null;
 
+        var notes = root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "";
+        var page = root.GetProperty("html_url").GetString() ?? "";
+
+        if (root.TryGetProperty("assets", out var assets))
+        {
+            var patchName = $"Apeiron-{FormatVer(current)}-to-{FormatVer(latestVersion)}.patch";
+            var patch = FindAsset(assets, patchName);
+            if (patch.Url != null)
+            {
+                return new LauncherUpdateInfo
+                {
+                    LatestVersion = latestVersion,
+                    DownloadUrl = patch.Url,
+                    ExpectedSha256 = patch.Sha256,
+                    ReleasePageUrl = page,
+                    ReleaseNotes = notes,
+                    Kind = LauncherUpdateKind.Patch
+                };
+            }
+
+            var exeAsset = FindAsset(assets, "Apeiron.exe");
+            if (exeAsset.Url == null)
+                exeAsset = FindAssetEndsWith(assets, $"-{FormatVer(latestVersion)}-win-x64.exe");
+            if (exeAsset.Url == null)
+                exeAsset = FindAssetEndsWith(assets, "-win-x64.exe");
+            if (exeAsset.Url != null && (exeAsset.Name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ?? false))
+            {
+                return new LauncherUpdateInfo
+                {
+                    LatestVersion = latestVersion,
+                    DownloadUrl = exeAsset.Url,
+                    ExpectedSha256 = exeAsset.Sha256,
+                    ReleasePageUrl = page,
+                    ReleaseNotes = notes,
+                    Kind = LauncherUpdateKind.Exe
+                };
+            }
+        }
+
         var (downloadUrl, sha256) = FindZipAsset(root);
         if (string.IsNullOrEmpty(downloadUrl))
             return null;
@@ -72,8 +119,9 @@ public static class LauncherUpdateService
             LatestVersion = latestVersion,
             DownloadUrl = downloadUrl,
             ExpectedSha256 = sha256,
-            ReleasePageUrl = root.GetProperty("html_url").GetString() ?? "",
-            ReleaseNotes = root.TryGetProperty("body", out var body) ? body.GetString() ?? "" : ""
+            ReleasePageUrl = page,
+            ReleaseNotes = notes,
+            Kind = LauncherUpdateKind.Zip
         };
     }
 
@@ -82,18 +130,33 @@ public static class LauncherUpdateService
         string? expectedSha256,
         CancellationToken cancellationToken = default)
     {
-        var tempZip = Path.Combine(Path.GetTempPath(), "apeiron-update-" + Guid.NewGuid().ToString("N") + ".zip");
+        var ext = downloadUrl.Contains(".patch", StringComparison.OrdinalIgnoreCase) ? ".patch"
+            : downloadUrl.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? ".exe"
+            : ".zip";
+        var tempPath = Path.Combine(Path.GetTempPath(), "apeiron-update-" + Guid.NewGuid().ToString("N") + ext);
         using var response = await AppHttp.Client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using var output = File.Create(tempZip);
+        await using var output = File.Create(tempPath);
         await input.CopyToAsync(output, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(expectedSha256))
-            VerifySha256(tempZip, expectedSha256);
+            VerifySha256(tempPath, expectedSha256);
 
-        return tempZip;
+        return tempPath;
+    }
+
+    /// <summary>Returns path to a ready-to-apply Apeiron.exe (after zip extract or patch apply).</summary>
+    public static string ResolveUpdatedExecutable(LauncherUpdateInfo update, string downloadedPath)
+    {
+        return update.Kind switch
+        {
+            LauncherUpdateKind.Zip => ExtractLauncherExecutable(downloadedPath),
+            LauncherUpdateKind.Exe => downloadedPath,
+            LauncherUpdateKind.Patch => ApplyPatchToCurrent(downloadedPath),
+            _ => ExtractLauncherExecutable(downloadedPath)
+        };
     }
 
     public static string ExtractLauncherExecutable(string zipPath)
@@ -108,6 +171,15 @@ public static class LauncherUpdateService
             throw new FileNotFoundException("Apeiron.exe not found in update package.");
 
         return exe;
+    }
+
+    public static string ApplyPatchToCurrent(string patchPath)
+    {
+        var currentExe = Process.GetCurrentProcess().MainModule?.FileName
+            ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Apeiron.exe");
+        var newExe = Path.Combine(Path.GetTempPath(), "apeiron-patched-" + Guid.NewGuid().ToString("N") + ".exe");
+        BinaryPatchHelper.ApplyPatch(currentExe, patchPath, newExe);
+        return newExe;
     }
 
     public static void ScheduleApplyUpdate(string newExePath)
@@ -145,6 +217,8 @@ public static class LauncherUpdateService
             throw new InvalidDataException("Update package failed integrity verification.");
     }
 
+    private static string FormatVer(Version v) => $"{v.Major}.{v.Minor}.{Math.Max(0, v.Build)}";
+
     private static string NormalizeVersion(string text)
     {
         var parts = text.Split('.', StringSplitOptions.RemoveEmptyEntries);
@@ -152,6 +226,36 @@ public static class LauncherUpdateService
             return $"{parts[0]}.{parts[1]}.{parts[2]}";
 
         return text;
+    }
+
+    private static (string? Url, string? Sha256, string? Name) FindAsset(JsonElement assets, string exactName)
+    {
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = asset.GetProperty("name").GetString() ?? "";
+            if (!name.Equals(exactName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            var url = asset.GetProperty("browser_download_url").GetString();
+            return (url, FindMatchingSha256Asset(assets, name), name);
+        }
+
+        return (null, null, null);
+    }
+
+    private static (string? Url, string? Sha256, string? Name) FindAssetEndsWith(JsonElement assets, string suffix)
+    {
+        foreach (var asset in assets.EnumerateArray())
+        {
+            var name = asset.GetProperty("name").GetString() ?? "";
+            if (!name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var url = asset.GetProperty("browser_download_url").GetString();
+            return (url, FindMatchingSha256Asset(assets, name), name);
+        }
+
+        return (null, null, null);
     }
 
     private static (string? Url, string? Sha256) FindZipAsset(JsonElement releaseRoot)
@@ -196,9 +300,9 @@ public static class LauncherUpdateService
         return (zipUrl, sha256);
     }
 
-    private static string? FindMatchingSha256Asset(JsonElement assets, string zipName)
+    private static string? FindMatchingSha256Asset(JsonElement assets, string fileName)
     {
-        var expectedName = zipName + ".sha256";
+        var expectedName = fileName + ".sha256";
         foreach (var asset in assets.EnumerateArray())
         {
             var name = asset.GetProperty("name").GetString() ?? "";

@@ -85,9 +85,54 @@
                               HorizontalAlignment="Left"/>
                 </Grid>
 
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="McFolderLabel" Grid.Column="0" Text="MC folder" Style="{StaticResource FieldLabel}"/>
+                    <TextBox x:Name="McFolderTextBox" Grid.Column="1"
+                             Style="{StaticResource LauncherTextBox}"
+                             TabIndex="3"
+                             Margin="0,0,8,0"/>
+                    <Button x:Name="McFolderBrowseButton" Grid.Column="2"
+                            Content="…" Width="36" Height="32"
+                            Style="{StaticResource DialogOutlinedButton}"
+                            Click="McFolderBrowse_Click"/>
+                </Grid>
+                <TextBlock x:Name="McFolderHintText"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           Margin="120,0,0,12"
+                           TextWrapping="Wrap"/>
+
                 <CheckBox x:Name="CheckForUpdatesCheckBox" Style="{StaticResource LauncherCheckBox}"
-                          Margin="0,0,0,14" TabIndex="3"
+                          Margin="0,0,0,10" TabIndex="4"
                           Content="Check for updates on startup"/>
+
+                <CheckBox x:Name="MinimizeToTrayCheckBox" Style="{StaticResource LauncherCheckBox}"
+                          Margin="0,0,0,10" TabIndex="5"
+                          Content="Minimize to tray"/>
+
+                <CheckBox x:Name="CloseOnGameLaunchCheckBox" Style="{StaticResource LauncherCheckBox}"
+                          Margin="0,0,0,12" TabIndex="6"
+                          Content="Close launcher when game starts"/>
+
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="120"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="JvmProfileLabel" Grid.Column="0" Text="JVM profile" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox x:Name="JvmProfileComboBox" Grid.Column="1"
+                              TabIndex="7"
+                              Style="{StaticResource SettingsComboBox}"
+                              ItemContainerStyle="{StaticResource LauncherComboBoxItem}"
+                              DisplayMemberPath="Display"
+                              SelectedValuePath="Id"
+                              HorizontalAlignment="Left"/>
+                </Grid>
 
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
                     <Button x:Name="OpenLogsButton" Content="Open logs" Style="{StaticResource DialogOutlinedButton}" Click="OpenLogs_Click"/>

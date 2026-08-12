@@ -1,8 +1,8 @@
 # Apeiron Launcher
 
-**Portable Minecraft launcher for Windows** — instances, mod loaders, Microsoft sign-in, and a bilingual UI.
+**Portable Minecraft launcher for Windows** — instances, mod loaders, Microsoft sign-in, skins, and a multilingual UI.
 
-[Installation guide](how-install.md) · [Changelog](CHANGELOG.md) · [Architecture](ARCHITECTURE.md) · [Testing](TESTING.md)
+Repository: [Festov/apeiron-launcher](https://github.com/Festov/apeiron-launcher) · Current version: **v1.6.2**
 
 ---
 
@@ -10,52 +10,81 @@
 
 ### What is Apeiron?
 
-Apeiron is a **single-folder, portable** Minecraft launcher built with .NET 8 and WPF. Drop `Apeiron.exe` anywhere on disk — game files, instances, settings, and logs live next to it. No system-wide install, no separate launcher data in `%AppData%`.
+Apeiron is a **single-folder, portable** Minecraft launcher (.NET 8 / WPF). Put `Apeiron.exe` anywhere — game files, instances, settings, and logs live next to it. No system-wide install and no launcher data in `%AppData%`.
 
-The launcher handles the full path from **download → mod loader → Java → launch**: vanilla and modded instances (Fabric, Quilt, Forge, NeoForge), optional Microsoft account login, or offline play with a validated nickname. The interface is available in **English and Russian**.
-
-Current version: **v1.5**
+It covers **download → mod loader → Java → launch**: vanilla and modded instances (Fabric, Quilt, Forge, NeoForge), Microsoft account login or offline play, skins with a 3D preview, and UI in **English, Russian, and Chinese** (or auto from the system language).
 
 ### Features
 
 #### Instances & modding
-- Multiple **instances** (builds) with separate saves, mods, and config under `instances/`
-- **Vanilla** and modded installs: Fabric, Quilt, Forge, NeoForge
-- **Modpack import** from zip (including Curse/Modrinth-style `overrides/`) — button or **drag-and-drop** on the main window
-- **Export / import** instances; **full backup** (mods, config, saves)
-- **Mod search** in the instance editor; metadata from `fabric.mod.json` / `mods.toml`
-- **Recent Minecraft versions** pinned at the top when creating a new instance
-- **Per-instance RAM** override or global default in settings
+- Multiple **instances** under `instances/` (saves, mods, config)
+- **Vanilla** and modded: Fabric, Quilt, Forge, NeoForge
+- **Modpack catalog** (Modrinth / CurseForge) when creating an instance
+- **Mod browser** to install individual mods into an instance
+- Export / import, full backup, verify game files, optional instance icon
+- Per-instance RAM, JVM profiles, resource/shader pack folders
+- Last-played tracking; CLI `--launch` (name/id) or `--launch` alone for last played
 
 #### Play & install
-- One-click **Play** with install-if-needed flow (`LauncherOrchestrator`)
-- **Reinstall** instance (clear version + redownload)
-- **Download progress** with cancel; **resume** partial downloads (HTTP Range)
-- **Manifest cache** for faster repeat installs; **HTTP retry** on transient failures
-- **Auto Oracle JDK** install matched to the Minecraft version (silent, background)
-- Install failure logs with **Open log** in the status bar
+- One-click **Play** with install-if-needed
+- Download progress with cancel; resume via HTTP Range; manifest cache
+- Auto **Oracle JDK** matched to the Minecraft version
+- Install / game logs from the instance editor
 
-#### Accounts & launch
-- **Microsoft sign-in** (WebView2) with DPAPI-encrypted token storage
-- **Offline-only mode** — hide Microsoft login in settings
-- **Offline nickname** validation before launch (`a-z`, `0-9`, `_`, 3–16 chars)
+#### Accounts & skins
+- **Microsoft sign-in** (embedded WebView2), multi-account, DPAPI-encrypted tokens
+- Offline-only mode and nickname validation
+- Skin picker: **3D preview** (background color presets), defaults, history, PNG file, import by name/URL
+- WebView2 Runtime check on startup
 
 #### Launcher UX
-- **Dark / light theme**
-- **Bilingual UI** — auto-detect, English, or Russian
-- **CLI**: `--launch <instance name or id>` and `--help`
-- **Auto-update** from GitHub Releases with **release notes** in the prompt
-- Structured **JSONL event log** (`logs/launcher-events.jsonl`) alongside session logs
-- Square, minimal control styling (no rounded corners on shared buttons/inputs)
+- Obsidian Ember theme; onboarding; minimize to tray; optional close-on-launch
+- **Single-instance** — a second start focuses the existing window
+- Auto-update from GitHub Releases (zip / exe / optional delta patch)
+- Languages: Auto, English, Russian, Chinese
 
-#### For developers
-- **178+ unit tests**, CI on Windows (build + test + publish)
-- [ARCHITECTURE.md](ARCHITECTURE.md) — layers, install/launch flow, disk layout
-- [how-install.md](how-install.md) — requirements, portable install, build & release
+### Requirements
+
+- Windows 10/11 x64
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (Microsoft sign-in & skin preview)
+- Internet for first-time Minecraft / Java download
+- **.NET 8 SDK** only if you build from source
+
+### Install (end users)
+
+1. Download `Apeiron-<version>-win-x64.zip` from [Releases](https://github.com/Festov/apeiron-launcher/releases).
+2. Extract to any folder and run `Apeiron.exe` (self-contained — no .NET install needed).
+3. Create an instance and press Play. Oracle JDK may install automatically if Java is missing.
+
+### Folder layout
+
+```
+Apeiron.exe
+.minecraft/     # versions, libraries, assets (or custom path from Settings)
+instances/      # per-instance mods, config, saves
+config/         # settings, builds list, encrypted auth
+logs/           # launcher and install logs
+```
+
+### Build & release (developers)
 
 ```bash
+git clone https://github.com/Festov/apeiron-launcher.git
+cd apeiron-launcher
 dotnet test Apeiron.Tests/Apeiron.Tests.csproj -c Release
+dotnet build Apeiron.csproj -c Release
 ```
+
+Release package (tests + single-file publish → `dist/`):
+
+```powershell
+.\build-release.ps1
+# or: .\build-release.ps1 -SkipTests
+```
+
+Outputs: `dist/Apeiron.exe`, `dist/Apeiron-<version>-win-x64.zip`, `.sha256` checksums, and optionally a delta `.patch` between versions.
+
+Tag a release to publish via GitHub Actions: `git tag v1.6.2 && git push origin v1.6.2`
 
 ---
 
@@ -63,61 +92,29 @@ dotnet test Apeiron.Tests/Apeiron.Tests.csproj -c Release
 
 ### Что такое Apeiron?
 
-Apeiron — **portable-лаунчер Minecraft для Windows** на .NET 8 / WPF. Положите `Apeiron.exe` в любую папку — файлы игры, сборки, настройки и логи хранятся рядом. Не нужен установщик и отдельные данные в `%AppData%`.
+Apeiron — **portable-лаунчер Minecraft для Windows** (.NET 8 / WPF). Положите `Apeiron.exe` в любую папку — игра, сборки, настройки и логи рядом с exe.
 
-Лаунчер закрывает весь цикл **скачивание → модлоадер → Java → запуск**: ванильные и модовые сборки (Fabric, Quilt, Forge, NeoForge), вход через Microsoft или офлайн-ник с проверкой. Интерфейс на **русском и английском**.
-
-Текущая версия: **v1.5**
+Цикл **скачивание → модлоадер → Java → запуск**: Fabric / Quilt / Forge / NeoForge, вход Microsoft или офлайн, скины с 3D-превью. Языки: **русский, английский, китайский** (или авто).
 
 ### Возможности
 
-#### Сборки и моды
-- Несколько **сборок** с отдельными сохранениями, модами и конфигом в `instances/`
-- **Ваниль** и модовые установки: Fabric, Quilt, Forge, NeoForge
-- **Импорт модпака** из zip (в т.ч. `overrides/`) — кнопка или **перетаскивание** на главное окно
-- **Экспорт / импорт** сборок; **полный бэкап** (моды, конфиг, сохранения)
-- **Поиск модов** в редакторе сборки; метаданные из `fabric.mod.json` / `mods.toml`
-- **Недавние версии MC** вверху списка при создании сборки
-- **Свой RAM** на сборку или глобальное значение в настройках
+- Сборки, каталог модпаков (Modrinth / CurseForge), браузер модов, бэкап, проверка файлов
+- Play в один клик, авто-JDK, докачка, логи
+- Microsoft (WebView2) / офлайн, скины с выбором фона превью
+- Трей, онбординг, один экземпляр процесса, автообновление с GitHub
+- CLI: `--launch`, `--help`
 
-#### Установка и запуск
-- **Play** в один клик с установкой при необходимости (`LauncherOrchestrator`)
-- **Переустановка** сборки (очистка версии + повторная загрузка)
-- **Прогресс загрузки** с отменой; **докачка** частичных файлов (HTTP Range)
-- **Кэш манифеста** MC; **повтор HTTP** при сбоях сети
-- **Автоустановка Oracle JDK** под версию Minecraft (в фоне)
-- Логи ошибок установки и кнопка **Открыть лог** в статус-баре
+### Установка
 
-#### Аккаунты
-- **Вход Microsoft** (WebView2), токены шифруются через DPAPI
-- Режим **только офлайн** — скрыть вход Microsoft
-- Проверка **офлайн-ника** перед запуском (`a-z`, `0-9`, `_`, 3–16 символов)
+1. Скачайте zip с [Releases](https://github.com/Festov/apeiron-launcher/releases).
+2. Распакуйте и запустите `Apeiron.exe`.
+3. Создайте сборку и нажмите «Играть».
 
-#### Интерфейс лаунчера
-- **Тёмная / светлая** тема
-- **Два языка** — авто, English, Русский
-- **CLI**: `--launch <имя или id сборки>` и `--help`
-- **Автообновление** с GitHub Releases и **release notes** в диалоге
-- Структурированный **JSONL-лог** (`logs/launcher-events.jsonl`) и текстовые сессии
-- Плоский UI без скруглений у общих кнопок и полей
+Нужны Windows 10/11 x64 и [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
 
-#### Для разработчиков
-- **178+ юнит-тестов**, CI на Windows (сборка + тесты + publish)
-- [ARCHITECTURE.md](ARCHITECTURE.md) — слои, install/launch flow, структура на диске
-- [how-install.md](how-install.md) — требования, portable-установка, сборка и релиз
+### Сборка
 
-```bash
+```powershell
 dotnet test Apeiron.Tests/Apeiron.Tests.csproj -c Release
+.\build-release.ps1
 ```
-
----
-
-## Links
-
-| | |
-|---|---|
-| Install & build | [how-install.md](how-install.md) |
-| Manual test checklist | [TESTING.md](TESTING.md) |
-| Code layout | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Version history | [CHANGELOG.md](CHANGELOG.md) |
-| Releases | [GitHub Releases](https://github.com/Festov/apeiron-launcher/releases) |

@@ -9,9 +9,9 @@ namespace Apeiron.Services;
 
 public sealed class ModpackInstallService
 {
-    private const int ParallelDownloads = 4;
-    private const int CurseForgeParallelDownloads = 3;
-    private static readonly TimeSpan PerFileTimeout = TimeSpan.FromSeconds(120);
+    private const int ParallelDownloads = 12;
+    private const int CurseForgeParallelDownloads = 8;
+    private static readonly TimeSpan PerFileTimeout = TimeSpan.FromSeconds(180);
 
     private readonly ModrinthModpackService _modrinth = new();
     private readonly string _instancesRoot;

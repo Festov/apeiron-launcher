@@ -55,11 +55,6 @@ if (-not (Test-Path $exe)) {
 
 Get-ChildItem $publishDir -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force
 
-$releaseNotes = Join-Path $root "RELEASE.txt"
-if (Test-Path $releaseNotes) {
-    Copy-Item $releaseNotes $publishDir -Force
-}
-
 $distDir = Join-Path $root "dist"
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 
@@ -76,11 +71,49 @@ $sha256 = (Get-FileHash $zipPath -Algorithm SHA256).Hash
 $shaPath = "$zipPath.sha256"
 Set-Content -Path $shaPath -Value "$sha256  $zipName" -Encoding ASCII -NoNewline
 
-$sizeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+$distExe = Join-Path $distDir "Apeiron.exe"
+$previousExe = $null
+$fromVer = $null
+if (Test-Path $distExe) {
+    try {
+        $prevInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($distExe)
+        $fromVer = ($prevInfo.ProductVersion -replace '[^\d\.].*$', '').Trim('.')
+        if ([string]::IsNullOrWhiteSpace($fromVer)) {
+            $fromVer = "$($prevInfo.FileMajorPart).$($prevInfo.FileMinorPart).$($prevInfo.FileBuildPart)"
+        }
+        if ($fromVer -and $fromVer -ne $version) {
+            $previousExe = Join-Path $distDir "Apeiron.prev.exe"
+            Copy-Item $distExe $previousExe -Force
+        }
+    } catch { }
+}
+
+Copy-Item $exe $distExe -Force
+$exeSha = (Get-FileHash $distExe -Algorithm SHA256).Hash
+Set-Content -Path "$distExe.sha256" -Value "$exeSha  Apeiron.exe" -Encoding ASCII -NoNewline
+
+# Remove legacy versioned standalone copies
+Get-ChildItem $distDir -Filter "Apeiron-*-win-x64.exe*" -ErrorAction SilentlyContinue | Remove-Item -Force
+
+if ($previousExe -and (Test-Path $previousExe) -and $fromVer) {
+    $patchName = "Apeiron-$fromVer-to-$version.patch"
+    $patchPath = Join-Path $distDir $patchName
+    Write-Host "Creating delta patch from $fromVer..."
+    dotnet run --project (Join-Path $root "tools\Apeiron.PatchTool\Apeiron.PatchTool.csproj") -c Release -- `
+        $previousExe $distExe $patchPath
+    if ($LASTEXITCODE -eq 0 -and (Test-Path $patchPath)) {
+        $patchSha = (Get-FileHash $patchPath -Algorithm SHA256).Hash
+        Set-Content -Path "$patchPath.sha256" -Value "$patchSha  $patchName" -Encoding ASCII -NoNewline
+        Write-Host "  PATCH: $patchPath"
+    }
+    Remove-Item $previousExe -Force -ErrorAction SilentlyContinue
+}
+
+$sizeMb = [math]::Round((Get-Item $distExe).Length / 1MB, 1)
 $zipMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
 
 Write-Host ""
 Write-Host "Apeiron $version"
-Write-Host "  EXE: $exe ($sizeMb MB)"
+Write-Host "  EXE: $distExe ($sizeMb MB)"
 Write-Host "  ZIP: $zipPath ($zipMb MB)"
 Write-Host "  SHA256: $shaPath"
