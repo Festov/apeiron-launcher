@@ -10,15 +10,18 @@
     <AssemblyTitle>Apeiron Launcher</AssemblyTitle>
     <Authors>Apeiron</Authors>
     <Description>Minecraft Launcher for Apeiron</Description>
-    <Version>1.6.1</Version>
+    <Version>1.6.2</Version>
     
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <PublishReadyToRun>true</PublishReadyToRun>
+    <!-- ReadyToRun increases size; keep off for smaller single-file builds -->
+    <PublishReadyToRun>false</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
@@ -28,15 +31,15 @@
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
-    <PackageReference Include="SkiaSharp" Version="3.119.0" />
+    <PackageReference Include="SkiaSharp" Version="4.151.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Assets\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <EmbeddedResource Include="Assets\*-head.png;Assets\*-skin.png;Assets\skinview3d.bundle.js">
+      <LogicalName>Apeiron.Assets.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>
@@ -45,6 +48,10 @@
     <EmbeddedResource Remove="Apeiron.Tests\**" />
     <Page Remove="Apeiron.Tests\**" />
     <Compile Remove="scripts\**\*.cs" />
+    <Compile Remove="tools\**\*" />
+    <None Remove="tools\**\*" />
+    <EmbeddedResource Remove="tools\**\*" />
+    <Page Remove="tools\**\*" />
   </ItemGroup>
 
   <Target Name="GenerateLauncherMetadata" BeforeTargets="CoreCompile">

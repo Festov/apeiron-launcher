@@ -39,6 +39,42 @@ public sealed class ModrinthModpackService
         string projectId,
         CancellationToken cancellationToken = default)
     {
+        return await ResolveLatestFileAsync(projectId, preferJar: false, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ModpackListItem>> SearchModsAsync(
+        string? query = null,
+        int limit = 40,
+        CancellationToken cancellationToken = default)
+    {
+        var facets = Uri.EscapeDataString("[[\"project_type:mod\"]]");
+        var q = string.IsNullOrWhiteSpace(query) ? "" : $"&query={Uri.EscapeDataString(query.Trim())}";
+        var clamped = Math.Clamp(limit, 1, 100);
+        var url = $"{SearchUrl}?facets={facets}&index=downloads&limit={clamped}{q}";
+
+        var json = await HttpRetryHelper.GetStringAsync(AppHttp.Client, url, cancellationToken);
+        var root = JObject.Parse(json);
+        var hits = root["hits"] as JArray;
+        if (hits == null || hits.Count == 0)
+            return Array.Empty<ModpackListItem>();
+
+        return hits
+            .OfType<JObject>()
+            .Select(ParseHit)
+            .Where(item => !string.IsNullOrWhiteSpace(item.Id))
+            .ToList();
+    }
+
+    public Task<(string VersionId, string DownloadUrl, string FileName)> ResolveLatestModFileAsync(
+        string projectId,
+        CancellationToken cancellationToken = default) =>
+        ResolveLatestFileAsync(projectId, preferJar: true, cancellationToken);
+
+    private async Task<(string VersionId, string DownloadUrl, string FileName)> ResolveLatestFileAsync(
+        string projectId,
+        bool preferJar,
+        CancellationToken cancellationToken)
+    {
         var url = $"{ProjectUrl}/{Uri.EscapeDataString(projectId)}/version";
         var json = await HttpRetryHelper.GetStringAsync(AppHttp.Client, url, cancellationToken);
         var versions = JArray.Parse(json);
@@ -50,13 +86,20 @@ public sealed class ModrinthModpackService
 
         var versionId = version["id"]?.ToString() ?? "";
         var files = version["files"] as JArray;
-        var primary = files?
+        JObject? primary = null;
+        if (preferJar && files != null)
+        {
+            primary = files.OfType<JObject>()
+                .FirstOrDefault(f => (f["filename"]?.ToString() ?? "").EndsWith(".jar", StringComparison.OrdinalIgnoreCase));
+        }
+
+        primary ??= files?
             .OfType<JObject>()
             .FirstOrDefault(f => f["primary"]?.Value<bool>() == true)
             ?? files?.OfType<JObject>().FirstOrDefault();
 
         var downloadUrl = primary?["url"]?.ToString();
-        var fileName = primary?["filename"]?.ToString() ?? $"{projectId}.mrpack";
+        var fileName = primary?["filename"]?.ToString() ?? $"{projectId}.jar";
 
         if (string.IsNullOrWhiteSpace(downloadUrl))
             throw new InvalidOperationException(LocalizationService.T("add_build.modpack.download_url_missing"));
@@ -72,7 +115,7 @@ public sealed class ModrinthModpackService
         DirectoryEnsureParent(destinationPath);
         await using var stream = await AppHttp.Client.GetStreamAsync(url, cancellationToken);
         await using var file = System.IO.File.Create(destinationPath);
-        await stream.CopyToAsync(file, cancellationToken);
+        await stream.CopyToAsync(file, 256 * 1024, cancellationToken);
     }
 
     private static ModpackListItem ParseHit(JObject hit)

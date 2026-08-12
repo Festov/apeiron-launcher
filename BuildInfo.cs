@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Text.Json.Serialization;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace Apeiron;
 
@@ -28,6 +30,8 @@ public class BuildInfo
     public string ModpackProjectId { get; set; } = "";
     /// <summary>True until pack files (mods/overrides) are downloaded on Play.</summary>
     public bool PendingModpackInstall { get; set; }
+    /// <summary>Optional icon path (absolute or under instance folder).</summary>
+    public string IconPath { get; set; } = "";
 
     [JsonIgnore]
     public bool IsPrimary { get; set; }
@@ -39,6 +43,51 @@ public class BuildInfo
         !string.IsNullOrWhiteSpace(ModpackProjectId);
 
     public string ComboDisplay => IsPrimary ? $"★ {DisplayName}" : DisplayName;
+
+    [JsonIgnore]
+    public bool HasIcon
+    {
+        get
+        {
+            var path = ResolveIconPath();
+            return !string.IsNullOrEmpty(path) && File.Exists(path);
+        }
+    }
+
+    [JsonIgnore]
+    public ImageSource? IconImage
+    {
+        get
+        {
+            var path = ResolveIconPath();
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                return null;
+            try
+            {
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.UriSource = new Uri(path);
+                bmp.DecodePixelWidth = 32;
+                bmp.EndInit();
+                bmp.Freeze();
+                return bmp;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    public string? ResolveIconPath()
+    {
+        if (string.IsNullOrWhiteSpace(IconPath))
+            return null;
+        if (Path.IsPathRooted(IconPath))
+            return IconPath;
+        return Path.Combine(GetGameDir(), IconPath);
+    }
 
     public static string GenerateDefaultName(string mcVersion, string loader, string loaderVersion, bool isModded)
     {
@@ -118,6 +167,7 @@ public class BuildInfo
         Directory.CreateDirectory(Path.Combine(gameDir, "config"));
         Directory.CreateDirectory(Path.Combine(gameDir, "saves"));
         Directory.CreateDirectory(Path.Combine(gameDir, "resourcepacks"));
+        Directory.CreateDirectory(Path.Combine(gameDir, "shaderpacks"));
     }
 
     public BuildInfo CloneWithNewId(string name)
@@ -139,7 +189,8 @@ public class BuildInfo
             Fullscreen = Fullscreen,
             ModpackSource = ModpackSource,
             ModpackProjectId = ModpackProjectId,
-            PendingModpackInstall = PendingModpackInstall
+            PendingModpackInstall = PendingModpackInstall,
+            IconPath = IconPath
         };
     }
 }

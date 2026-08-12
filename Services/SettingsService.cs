@@ -15,12 +15,22 @@ public class SettingsService
     public bool DarkTheme { get; set; } = true;
     public string OfflineUsername { get; set; } = OfflineUsernameHelper.Default;
     public string DefaultBuildId { get; set; } = "";
+    public string LastPlayedBuildId { get; set; } = "";
     public string Language { get; set; } = "auto";
     public bool OfflineOnly { get; set; }
     public bool CheckForUpdates { get; set; } = true;
     public string SkinPreset { get; set; } = "default";
     public string SkinModel { get; set; } = "classic";
     public string CustomSkinPath { get; set; } = "";
+    /// <summary>Hex background for 3D skin preview, e.g. #07090D.</summary>
+    public string SkinPreviewBackground { get; set; } = "#07090D";
+    /// <summary>Empty = default .minecraft next to launcher.</summary>
+    public string MinecraftDir { get; set; } = "";
+    public bool MinimizeToTray { get; set; }
+    public bool CloseOnGameLaunch { get; set; }
+    public string JvmProfile { get; set; } = JvmProfileHelper.Default;
+    public bool OnboardingCompleted { get; set; }
+    public int AssetParallelism { get; set; } = 24;
     public string CurseForgeApiKey { get; set; } =
         "$2a$10$ch9m5Af.9tnalNjC18wLvuhnD0O38uL6ufQ.OiD22qed0Cu8mCva6";
     public List<string> RecentMcVersions { get; set; } = new();
@@ -36,7 +46,20 @@ public class SettingsService
     public string GetDefaultMinecraftDir() =>
         Path.Combine(_launcherDir, ".minecraft");
 
-    public string GetMinecraftDir() => GetDefaultMinecraftDir();
+    public string GetMinecraftDir()
+    {
+        if (string.IsNullOrWhiteSpace(MinecraftDir))
+            return GetDefaultMinecraftDir();
+
+        try
+        {
+            return Path.GetFullPath(MinecraftDir.Trim());
+        }
+        catch
+        {
+            return GetDefaultMinecraftDir();
+        }
+    }
 
     public void Load()
     {
@@ -56,6 +79,8 @@ public class SettingsService
                 OfflineUsername = OfflineUsernameHelper.Sanitize(offline.GetString());
             if (root.TryGetProperty("DefaultBuildId", out var defaultBuild))
                 DefaultBuildId = defaultBuild.GetString() ?? "";
+            if (root.TryGetProperty("LastPlayedBuildId", out var lastPlayed))
+                LastPlayedBuildId = lastPlayed.GetString() ?? "";
             if (root.TryGetProperty("Language", out var lang))
                 Language = lang.GetString() ?? "auto";
             if (root.TryGetProperty("OfflineOnly", out var offlineOnly))
@@ -68,6 +93,21 @@ public class SettingsService
                 SkinModel = skinModel.GetString() ?? "classic";
             if (root.TryGetProperty("CustomSkinPath", out var customSkin))
                 CustomSkinPath = customSkin.GetString() ?? "";
+            if (root.TryGetProperty("SkinPreviewBackground", out var skinBg))
+                SkinPreviewBackground = NormalizeHexColor(skinBg.GetString(), "#07090D");
+            if (root.TryGetProperty("MinecraftDir", out var minecraftDir))
+                MinecraftDir = minecraftDir.GetString() ?? "";
+            if (root.TryGetProperty("MinimizeToTray", out var tray))
+                MinimizeToTray = tray.GetBoolean();
+            if (root.TryGetProperty("CloseOnGameLaunch", out var closeOnLaunch))
+                CloseOnGameLaunch = closeOnLaunch.GetBoolean();
+            if (root.TryGetProperty("JvmProfile", out var jvmProfile))
+                JvmProfile = jvmProfile.GetString() ?? JvmProfileHelper.Default;
+            if (root.TryGetProperty("OnboardingCompleted", out var onboarding))
+                OnboardingCompleted = onboarding.GetBoolean();
+            if (root.TryGetProperty("AssetParallelism", out var parallelism) &&
+                parallelism.TryGetInt32(out var p))
+                AssetParallelism = Math.Clamp(p, 4, 64);
             if (root.TryGetProperty("CurseForgeApiKey", out var curseForgeKey))
             {
                 var key = curseForgeKey.GetString();
@@ -107,12 +147,20 @@ public class SettingsService
                 DarkTheme,
                 OfflineUsername = OfflineUsernameHelper.Sanitize(OfflineUsername),
                 DefaultBuildId,
+                LastPlayedBuildId,
                 Language,
                 OfflineOnly,
                 CheckForUpdates,
                 SkinPreset,
                 SkinModel,
                 CustomSkinPath,
+                SkinPreviewBackground,
+                MinecraftDir,
+                MinimizeToTray,
+                CloseOnGameLaunch,
+                JvmProfile,
+                OnboardingCompleted,
+                AssetParallelism,
                 CurseForgeApiKey,
                 RecentMcVersions
             };
@@ -123,5 +171,24 @@ public class SettingsService
         {
             Console.WriteLine(LocalizationService.F("log.settings.save_error", ex.Message));
         }
+    }
+
+    public static string NormalizeHexColor(string? value, string fallback = "#07090D")
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return fallback;
+        var t = value.Trim();
+        if (!t.StartsWith('#') && t.Length == 6)
+            t = "#" + t;
+        if (t.Length != 7 || t[0] != '#')
+            return fallback;
+        for (var i = 1; i < 7; i++)
+        {
+            var c = t[i];
+            var ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!ok)
+                return fallback;
+        }
+        return t.ToUpperInvariant();
     }
 }

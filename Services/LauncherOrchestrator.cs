@@ -75,6 +75,10 @@ public sealed class LauncherOrchestrator
         return new LaunchPreparation(LaunchPreparationResult.Ready, resolution.Identity);
     }
 
-    public Task<Process?> LaunchGameAsync(BuildInfo build, LaunchIdentity identity, int globalRamGb) =>
-        _play.LaunchGameAsync(build, identity, globalRamGb);
+    public Task<Process?> LaunchGameAsync(
+        BuildInfo build,
+        LaunchIdentity identity,
+        int globalRamGb,
+        string? jvmProfile = null) =>
+        _play.LaunchGameAsync(build, identity, globalRamGb, jvmProfile);
 }

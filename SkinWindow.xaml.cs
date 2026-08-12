@@ -3,9 +3,11 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Apeiron.Services;
 using Microsoft.Win32;
+using Forms = System.Windows.Forms;
 
 namespace Apeiron;
 
@@ -41,6 +43,10 @@ public partial class SkinWindow : Window, ILocalizable
         if (_presetId == "custom" && !string.IsNullOrWhiteSpace(settings.CustomSkinPath))
             _pendingCustomPath = settings.CustomSkinPath;
 
+        Preview3D.SetMinecraftDir(settings.GetMinecraftDir());
+        Preview3D.SetBackground(settings.SkinPreviewBackground);
+        ApplyPreviewHostBackground(settings.SkinPreviewBackground);
+
         var standards = _skins.GetStandardSkins();
         ClassicPresetList.ItemsSource = standards.Where(s => !s.IsSlim).ToList();
         SlimPresetList.ItemsSource = standards.Where(s => s.IsSlim).ToList();
@@ -72,6 +78,8 @@ public partial class SkinWindow : Window, ILocalizable
         ClassicPresetsLabel.Text = LocalizationService.T("skin.classic");
         SlimPresetsLabel.Text = LocalizationService.T("skin.slim");
         BrowseButton.Content = LocalizationService.T("skin.browse");
+        ImportSkinButton.Content = LocalizationService.T("skin.import");
+        ImportSkinTextBox.ToolTip = LocalizationService.T("skin.import_hint");
         ClassicRadio.Content = LocalizationService.T("skin.classic");
         SlimRadio.Content = LocalizationService.T("skin.slim");
         CancelButton.Content = LocalizationService.T("common.cancel");
@@ -81,6 +89,10 @@ public partial class SkinWindow : Window, ILocalizable
             ? LocalizationService.T("skin.hint_online")
             : LocalizationService.T("skin.hint_offline");
         Preview3D.SetDragHint(LocalizationService.T("skin.drag_hint"));
+        if (BgLabel != null)
+            BgLabel.Text = LocalizationService.T("skin.bg_label");
+        if (CustomBgButton != null)
+            CustomBgButton.ToolTip = LocalizationService.T("skin.bg_custom");
     }
 
     private void ClearStatus()
@@ -210,6 +222,39 @@ public partial class SkinWindow : Window, ILocalizable
         RefreshPreview();
     }
 
+    private async void ImportSkinButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy)
+            return;
+
+        ClearStatus();
+        try
+        {
+            ImportSkinButton.IsEnabled = false;
+            var imported = await _skins.ImportSkinFromNickOrUrlAsync(ImportSkinTextBox.Text);
+            if (imported == null)
+            {
+                ShowError(LocalizationService.T("skin.import_invalid"));
+                return;
+            }
+
+            ClearHistorySelection();
+            _showingAccountSkin = false;
+            _presetId = "custom";
+            _pendingCustomPath = imported.Value.Path;
+            SetModelChoice(imported.Value.IsSlim || SlimRadio.IsChecked == true, locked: false);
+            RefreshPreview();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            ImportSkinButton.IsEnabled = true;
+        }
+    }
+
     private async void HistorySkin_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: AccountSkinInfo skin })
@@ -252,6 +297,13 @@ public partial class SkinWindow : Window, ILocalizable
         if (_showingAccountSkin && _accountFullSkin != null)
         {
             Preview3D.SetSkin(_accountFullSkin, SlimRadio.IsChecked == true);
+            return;
+        }
+
+        if (SkinService.IsStandardSkinId(_presetId) && string.IsNullOrWhiteSpace(_pendingCustomPath))
+        {
+            var standard = _skins.LoadStandardSkinBitmap(_presetId);
+            Preview3D.SetSkin(standard, SlimRadio.IsChecked == true);
             return;
         }
 
@@ -361,6 +413,59 @@ public partial class SkinWindow : Window, ILocalizable
             return null;
 
         return _skins.GetStandardSkinPath(_presetId);
+    }
+
+    private void PreviewBg_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: string hex })
+            return;
+        ApplyPreviewBackground(hex);
+    }
+
+    private void CustomBgButton_Click(object sender, RoutedEventArgs e)
+    {
+        var current = SettingsService.NormalizeHexColor(_settings.SkinPreviewBackground);
+        using var dialog = new Forms.ColorDialog
+        {
+            FullOpen = true,
+            Color = HexToFormsColor(current)
+        };
+        if (dialog.ShowDialog() != Forms.DialogResult.OK)
+            return;
+
+        var hex = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+        ApplyPreviewBackground(hex);
+    }
+
+    private void ApplyPreviewBackground(string hex)
+    {
+        hex = SettingsService.NormalizeHexColor(hex);
+        _settings.SkinPreviewBackground = hex;
+        _settings.Save();
+        Preview3D.SetBackground(hex);
+        ApplyPreviewHostBackground(hex);
+    }
+
+    private void ApplyPreviewHostBackground(string hex)
+    {
+        try
+        {
+            PreviewHost.Background = (Brush)new BrushConverter().ConvertFromString(
+                SettingsService.NormalizeHexColor(hex))!;
+        }
+        catch
+        {
+            PreviewHost.Background = new SolidColorBrush(Color.FromRgb(7, 9, 13));
+        }
+    }
+
+    private static System.Drawing.Color HexToFormsColor(string hex)
+    {
+        hex = SettingsService.NormalizeHexColor(hex);
+        return System.Drawing.Color.FromArgb(
+            Convert.ToInt32(hex.Substring(1, 2), 16),
+            Convert.ToInt32(hex.Substring(3, 2), 16),
+            Convert.ToInt32(hex.Substring(5, 2), 16));
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)

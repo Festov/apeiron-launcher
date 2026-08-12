@@ -49,7 +49,11 @@ public sealed class PlayOrchestrator
     public string? ResolveJavaPath(BuildInfo build) =>
         _java.ResolveJavaPath(build.MinecraftVersion);
 
-    public async Task<Process?> LaunchGameAsync(BuildInfo build, LaunchIdentity identity, int globalRamGb)
+    public async Task<Process?> LaunchGameAsync(
+        BuildInfo build,
+        LaunchIdentity identity,
+        int globalRamGb,
+        string? jvmProfile = null)
     {
         var javaPath = ResolveJavaPath(build);
         if (string.IsNullOrEmpty(javaPath))
@@ -62,6 +66,7 @@ public sealed class PlayOrchestrator
             identity.Uuid,
             identity.AccessToken,
             ram,
-            javaPath);
+            javaPath,
+            jvmProfile);
     }
 }

@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Edit instance"
-        Height="Auto" Width="480"
+        Height="Auto" Width="760"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
@@ -53,207 +53,77 @@
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="1" Margin="18,16,18,18">
+            <Grid x:Name="ContentColumnsGrid" Grid.Row="1" Margin="18,16,18,18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="340"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="240"/>
+                </Grid.ColumnDefinitions>
 
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="100"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="NameLabel" Grid.Column="0" Text="Name" Style="{StaticResource FieldLabel}"/>
-                    <TextBox x:Name="NameTextBox" Grid.Column="1" Style="{StaticResource EditTextBox}"/>
-                </Grid>
-
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="100"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="ProfileLabel" Grid.Column="0" Text="Profile" Style="{StaticResource FieldLabel}"/>
-                    <TextBlock x:Name="ProfileInfoText" Grid.Column="1"
-                               FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
-                               VerticalAlignment="Center"
-                               TextWrapping="Wrap"/>
-                </Grid>
-
-                <Grid x:Name="ModsEnabledRow" Margin="0,0,0,12" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="100"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="ModsLabel" Grid.Column="0" Text="Mods" Style="{StaticResource FieldLabel}"/>
-                    <CheckBox x:Name="ModsEnabledCheckBox" Grid.Column="1"
-                              Style="{StaticResource LauncherCheckBox}"
-                              Content="Использовать моды"
-                              VerticalAlignment="Center"/>
-                </Grid>
-
-                <Grid x:Name="ModsSection" Margin="0,0,0,12" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="100"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="ModsListLabel" Grid.Column="0" Text="List" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,8,10,0"/>
-                    <Border Grid.Column="1"
-                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                            Background="{DynamicResource SurfaceLightBrush}"
-                            CornerRadius="10"
-                            MinHeight="200" MaxHeight="300"
-                            AllowDrop="True"
-                            DragOver="ModsSection_DragOver"
-                            Drop="ModsSection_Drop"
-                            ClipToBounds="True">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8,8,8,4">
-                                <Button x:Name="AddModButton" Content="Add mod" Style="{StaticResource DialogOutlinedButton}"
-                                        Click="AddMod_Click" Padding="8,4" Height="28"/>
-                                <Button x:Name="OpenModsFolderButton" Content="Open folder" Style="{StaticResource DialogOutlinedButton}"
-                                        Click="OpenModsFolder_Click" Padding="8,4" Height="28" Margin="6,0,0,0"/>
-                                <Button x:Name="RefreshModsButton" Content="Refresh" Style="{StaticResource DialogOutlinedButton}"
-                                        Click="RefreshMods_Click" Margin="6,0,0,0" Padding="8,4" Height="28"/>
-                            </StackPanel>
-                            <TextBox x:Name="ModSearchTextBox" Grid.Row="1"
-                                     Style="{StaticResource EditTextBox}"
-                                     Margin="8,0,8,6"
-                                     TextChanged="ModSearchTextBox_TextChanged"/>
-                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="6,0,6,8">
-                                <ItemsControl x:Name="ModsList">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <CheckBox Content="{Binding ListLabel}" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
-                                                      Style="{StaticResource LauncherCheckBox}"
-                                                      Margin="2,3" Checked="ModCheckBox_Changed" Unchecked="ModCheckBox_Changed"/>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                            <TextBlock x:Name="NoModsText" Grid.Row="2"
-                                       Text="Нет модов. Перетащите .jar сюда или нажмите «Добавить мод»."
-                                       FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8"
-                                       TextWrapping="Wrap" TextAlignment="Center"/>
-                        </Grid>
-                    </Border>
-                </Grid>
-
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="100"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="LaunchLabel" Grid.Column="0" Text="Launch" Style="{StaticResource FieldLabel}"/>
-                    <CheckBox x:Name="DefaultBuildCheckBox" Grid.Column="1"
-                              Style="{StaticResource LauncherCheckBox}"
-                              Content="Основная сборка (выбирается при старте)"
-                              VerticalAlignment="Center"/>
-                </Grid>
-
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="100"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="JvmLabel" Grid.Column="0" Text="JVM" Style="{StaticResource FieldLabel}"/>
-                    <TextBox x:Name="JvmArgsTextBox" Grid.Column="1"
-                             Style="{StaticResource EditCompactTextBox}"
-                             ToolTip="Дополнительные флаги Java, например: -XX:+UseG1GC"/>
-                </Grid>
-
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="100"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="RamLabel" Grid.Column="0" Text="RAM" Style="{StaticResource FieldLabel}"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <CheckBox x:Name="UseGlobalRamCheckBox" Style="{StaticResource LauncherCheckBox}"
-                                  Content="Global" VerticalAlignment="Center"
-                                  Checked="UseGlobalRamCheckBox_Changed" Unchecked="UseGlobalRamCheckBox_Changed"/>
-                        <TextBox x:Name="RamGbTextBox"
-                                 Style="{StaticResource EditNumericTextBox}"
-                                 Margin="10,0,0,0"
-                                 PreviewTextInput="NumericTextBox_PreviewTextInput"
-                                 IsEnabled="False"/>
-                    </StackPanel>
-                </Grid>
-
-                <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="100"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="WindowLabel" Grid.Column="0" Text="Window" Style="{StaticResource FieldLabel}"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBox x:Name="ResolutionWidthTextBox"
-                                 Style="{StaticResource EditNumericTextBox}"
-                                 PreviewTextInput="NumericTextBox_PreviewTextInput"
-                                 ToolTip="Ширина (пусто = по умолчанию)"/>
-                        <TextBlock Text="×" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextMutedBrush}" Margin="8,0"/>
-                        <TextBox x:Name="ResolutionHeightTextBox"
-                                 Style="{StaticResource EditNumericTextBox}"
-                                 PreviewTextInput="NumericTextBox_PreviewTextInput"
-                                 ToolTip="Высота (пусто = по умолчанию)"/>
-                        <CheckBox x:Name="FullscreenCheckBox" Style="{StaticResource LauncherCheckBox}"
-                                  Content="Полный экран" Margin="14,0,0,0" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Grid>
-
-                <Border Margin="0,4,0,0"
-                        Padding="0,14,0,0"
-                        BorderBrush="{DynamicResource BorderBrush}"
-                        BorderThickness="0,1,0,0">
-                    <StackPanel>
+                <!-- Left: main settings; mods list height matches actions column -->
+                <DockPanel x:Name="LeftColumn" Grid.Column="0" LastChildFill="True">
+                    <StackPanel x:Name="LeftBottomPanel" DockPanel.Dock="Bottom">
                         <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="90"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="8"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="8"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="8"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+                            <TextBlock x:Name="LaunchLabel" Grid.Column="0" Text="Launch" Style="{StaticResource FieldLabel}"/>
+                            <CheckBox x:Name="DefaultBuildCheckBox" Grid.Column="1"
+                                      Style="{StaticResource LauncherCheckBox}"
+                                      Content="Основная сборка (выбирается при старте)"
+                                      VerticalAlignment="Center"/>
+                        </Grid>
 
-                            <Button x:Name="FolderButton" Grid.Row="0" Grid.Column="0"
-                                    Content="Folder" Style="{StaticResource DialogOutlinedButton}"
-                                    HorizontalAlignment="Stretch"
-                                    Click="OpenInstanceFolder_Click"
-                                    ToolTip="Открыть папку сборки"/>
-                            <Button x:Name="ExportButton" Grid.Row="0" Grid.Column="2"
-                                    Content="Export" Style="{StaticResource DialogOutlinedButton}"
-                                    HorizontalAlignment="Stretch"
-                                    Click="ExportButton_Click"/>
-                            <Button x:Name="ImportButton" Grid.Row="2" Grid.Column="0"
-                                    Content="Import" Style="{StaticResource DialogOutlinedButton}"
-                                    HorizontalAlignment="Stretch"
-                                    Click="ImportButton_Click"/>
-                            <Button x:Name="BackupButton" Grid.Row="2" Grid.Column="2"
-                                    Content="Backup" Style="{StaticResource DialogOutlinedButton}"
-                                    HorizontalAlignment="Stretch"
-                                    Click="BackupButton_Click"/>
-                            <Button x:Name="DuplicateButton" Grid.Row="4" Grid.Column="0"
-                                    Content="Дублировать" Style="{StaticResource DialogOutlinedButton}"
-                                    HorizontalAlignment="Stretch"
-                                    Click="DuplicateButton_Click"/>
-                            <Button x:Name="ReinstallButton" Grid.Row="4" Grid.Column="2"
-                                    Content="Переустановить" Style="{StaticResource DialogWarningButton}"
-                                    HorizontalAlignment="Stretch"
-                                    Click="ReinstallButton_Click"/>
-                            <Button x:Name="DeleteButton" Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3"
-                                    Content="Удалить" Style="{StaticResource DialogDangerButton}"
-                                    HorizontalAlignment="Stretch"
-                                    Click="DeleteButton_Click"/>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="JvmLabel" Grid.Column="0" Text="JVM" Style="{StaticResource FieldLabel}"/>
+                            <TextBox x:Name="JvmArgsTextBox" Grid.Column="1"
+                                     Style="{StaticResource EditCompactTextBox}"
+                                     ToolTip="Дополнительные флаги Java, например: -XX:+UseG1GC"/>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="RamLabel" Grid.Column="0" Text="RAM" Style="{StaticResource FieldLabel}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <CheckBox x:Name="UseGlobalRamCheckBox" Style="{StaticResource LauncherCheckBox}"
+                                          Content="Global" VerticalAlignment="Center"
+                                          Checked="UseGlobalRamCheckBox_Changed" Unchecked="UseGlobalRamCheckBox_Changed"/>
+                                <TextBox x:Name="RamGbTextBox"
+                                         Style="{StaticResource EditNumericTextBox}"
+                                         Margin="10,0,0,0"
+                                         PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                         IsEnabled="False"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="WindowLabel" Grid.Column="0" Text="Window" Style="{StaticResource FieldLabel}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBox x:Name="ResolutionWidthTextBox"
+                                         Style="{StaticResource EditNumericTextBox}"
+                                         PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                         ToolTip="Ширина (пусто = по умолчанию)"/>
+                                <TextBlock Text="×" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextMutedBrush}" Margin="8,0"/>
+                                <TextBox x:Name="ResolutionHeightTextBox"
+                                         Style="{StaticResource EditNumericTextBox}"
+                                         PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                         ToolTip="Высота (пусто = по умолчанию)"/>
+                                <CheckBox x:Name="FullscreenCheckBox" Style="{StaticResource LauncherCheckBox}"
+                                          Content="Полный экран" Margin="14,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
                         </Grid>
 
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -262,8 +132,164 @@
                                     Margin="8,0,0,0" Click="SaveButton_Click"/>
                         </StackPanel>
                     </StackPanel>
+
+                    <StackPanel x:Name="LeftTopPanel" DockPanel.Dock="Top">
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="NameLabel" Grid.Column="0" Text="Name" Style="{StaticResource FieldLabel}"/>
+                            <TextBox x:Name="NameTextBox" Grid.Column="1" Style="{StaticResource EditTextBox}"/>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="ProfileLabel" Grid.Column="0" Text="Profile" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock x:Name="ProfileInfoText" Grid.Column="1"
+                                       FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap"/>
+                        </Grid>
+
+                        <Grid x:Name="ModsEnabledRow" Margin="0,0,0,12" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="ModsLabel" Grid.Column="0" Text="Mods" Style="{StaticResource FieldLabel}"/>
+                            <CheckBox x:Name="ModsEnabledCheckBox" Grid.Column="1"
+                                      Style="{StaticResource LauncherCheckBox}"
+                                      Content="Использовать моды"
+                                      VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <Grid x:Name="ModsSection" Margin="0,0,0,12" Visibility="Collapsed"
+                          VerticalAlignment="Stretch">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ModsListLabel" Grid.Column="0" Text="List" Style="{StaticResource FieldLabel}" VerticalAlignment="Top" Margin="0,8,10,0"/>
+                        <Border x:Name="ModsListBorder" Grid.Column="1"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                Background="{DynamicResource SurfaceLightBrush}"
+                                CornerRadius="10"
+                                VerticalAlignment="Stretch"
+                                AllowDrop="True"
+                                DragOver="ModsSection_DragOver"
+                                Drop="ModsSection_Drop"
+                                ClipToBounds="True">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8,8,8,4">
+                                    <Button x:Name="AddModButton" Content="Add mod" Style="{StaticResource DialogOutlinedButton}"
+                                            Click="AddMod_Click" Padding="8,4" Height="28"/>
+                                    <Button x:Name="OpenModsFolderButton" Content="Open folder" Style="{StaticResource DialogOutlinedButton}"
+                                            Click="OpenModsFolder_Click" Padding="8,4" Height="28" Margin="6,0,0,0"/>
+                                    <Button x:Name="RefreshModsButton" Content="Refresh" Style="{StaticResource DialogOutlinedButton}"
+                                            Click="RefreshMods_Click" Margin="6,0,0,0" Padding="8,4" Height="28"/>
+                                </StackPanel>
+                                <TextBox x:Name="ModSearchTextBox" Grid.Row="1"
+                                         Style="{StaticResource EditTextBox}"
+                                         Margin="8,0,8,6"
+                                         TextChanged="ModSearchTextBox_TextChanged"/>
+                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="6,0,6,8">
+                                    <ItemsControl x:Name="ModsList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox Content="{Binding ListLabel}" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                                          Style="{StaticResource LauncherCheckBox}"
+                                                          Margin="2,3" Checked="ModCheckBox_Changed" Unchecked="ModCheckBox_Changed"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                                <TextBlock x:Name="NoModsText" Grid.Row="2"
+                                           Text="Нет модов. Перетащите .jar сюда или нажмите «Добавить мод»."
+                                           FontSize="11" Foreground="{DynamicResource TextMutedBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8"
+                                           TextWrapping="Wrap" TextAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </DockPanel>
+
+                <!-- Right: actions (drives window height) -->
+                <Border Grid.Column="2"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1,0,0,0"
+                        Padding="16,0,0,0"
+                        VerticalAlignment="Top">
+                    <StackPanel x:Name="ActionsPanel">
+                        <Button x:Name="FolderButton"
+                                Content="Folder" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="OpenInstanceFolder_Click"
+                                ToolTip="Открыть папку сборки"/>
+                        <Button x:Name="ExportButton"
+                                Content="Export" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="ExportButton_Click"/>
+                        <Button x:Name="ImportButton"
+                                Content="Import" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="ImportButton_Click"/>
+                        <Button x:Name="BackupButton"
+                                Content="Backup" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="BackupButton_Click"/>
+                        <Button x:Name="DuplicateButton"
+                                Content="Дублировать" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="DuplicateButton_Click"/>
+                        <Button x:Name="ReinstallButton"
+                                Content="Переустановить" Style="{StaticResource DialogWarningButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="ReinstallButton_Click"/>
+                        <Button x:Name="GameLogButton"
+                                Content="Game log" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="GameLogButton_Click"/>
+                        <Button x:Name="CrashesButton"
+                                Content="Crashes" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="CrashesButton_Click"/>
+                        <Button x:Name="VerifyButton"
+                                Content="Verify files" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="VerifyButton_Click"/>
+                        <Button x:Name="ModBrowserButton"
+                                Content="Browse mods" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="ModBrowserButton_Click"/>
+                        <Button x:Name="SetIconButton"
+                                Content="Set icon" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="SetIconButton_Click"/>
+                        <Button x:Name="ResourcePacksButton"
+                                Content="Resource packs" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="ResourcePacksButton_Click"/>
+                        <Button x:Name="ShaderPacksButton"
+                                Content="Shader packs" Style="{StaticResource DialogOutlinedButton}"
+                                HorizontalAlignment="Stretch" Margin="0,0,0,8"
+                                Click="ShaderPacksButton_Click"/>
+                        <Button x:Name="DeleteButton"
+                                Content="Удалить" Style="{StaticResource DialogDangerButton}"
+                                HorizontalAlignment="Stretch" Margin="0,8,0,0"
+                                Click="DeleteButton_Click"/>
+                    </StackPanel>
                 </Border>
-            </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>

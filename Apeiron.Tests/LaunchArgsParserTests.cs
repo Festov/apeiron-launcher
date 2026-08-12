@@ -6,11 +6,21 @@ namespace Apeiron.Tests;
 public class LaunchArgsParserTests
 {
     [Fact]
+    public void Parse_launch_without_value_means_last_played()
+    {
+        var parsed = LaunchArgsParser.Parse(new[] { "--launch" });
+        Assert.True(parsed.LaunchLastPlayed);
+        Assert.False(parsed.HasLaunchTarget);
+        Assert.True(parsed.ShouldQuickLaunch);
+    }
+
+    [Fact]
     public void Parse_reads_launch_flag_with_separate_value()
     {
         var parsed = LaunchArgsParser.Parse(new[] { "--launch", "My Build" });
         Assert.Equal("My Build", parsed.LaunchTarget);
         Assert.True(parsed.HasLaunchTarget);
+        Assert.False(parsed.LaunchLastPlayed);
     }
 
     [Fact]

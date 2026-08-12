@@ -1,26 +1,28 @@
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using Microsoft.Web.WebView2.Wpf;
 using Apeiron.Services;
 
 namespace Apeiron;
 
 public partial class AuthWindow : Window, ILocalizable
 {
-    private readonly MainWindow _mainWindow;
     private readonly AuthService _auth;
+    private readonly string _minecraftDir;
     private bool _isProcessing;
 
-    public AuthWindow(MainWindow mainWindow, AuthService auth)
+    public AuthWindow(MainWindow mainWindow, AuthService auth, string? minecraftDir = null)
     {
         InitializeComponent();
-        _mainWindow = mainWindow;
         _auth = auth;
+        _minecraftDir = string.IsNullOrWhiteSpace(minecraftDir)
+            ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".minecraft")
+            : minecraftDir.Trim();
         Owner = mainWindow;
-        
-        Loaded += async (s, e) =>
+
+        Loaded += async (_, _) =>
         {
             ApplyLocalization();
             LocalizationService.Instance.LanguageChanged += OnLanguageChanged;
@@ -39,44 +41,47 @@ public partial class AuthWindow : Window, ILocalizable
             : LocalizationService.T("auth.heading");
         AuthSubtitleText.Text = LocalizationService.T("auth.subtitle");
     }
-    
+
     private async Task InitializeWebView()
     {
         try
         {
-            await AuthWebView.EnsureCoreWebView2Async(null);
+            await AuthWebView.EnsureCoreWebView2Async(
+                await WebView2Helper.CreateEnvironmentAsync(_minecraftDir));
             AuthWebView.CoreWebView2.Settings.IsScriptEnabled = true;
             AuthWebView.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = true;
-            
-            AuthWebView.CoreWebView2.NavigationStarting += (_, args) =>
-            {
-                if (_isProcessing) return;
-                
-                var uri = new Uri(args.Uri);
-                
-                if (uri.Host == "login.live.com" && 
-                    uri.AbsolutePath == "/oauth20_desktop.srf" &&
-                    System.Web.HttpUtility.ParseQueryString(uri.Query).Get("code") != null)
-                {
-                    _isProcessing = true;
-                    var code = System.Web.HttpUtility.ParseQueryString(uri.Query).Get("code");
-                    args.Cancel = true;
-                    _ = CompleteAuthAsync(code);
-                }
-            };
-            
-            var authUrl = "https://login.live.com/oauth20_authorize.srf?" +
-                "client_id=00000000402b5328" +
-                "&response_type=code" +
-                "&redirect_uri=https://login.live.com/oauth20_desktop.srf" +
-                "&scope=XboxLive.signin%20offline_access" +
-                "&response_mode=query";
-            
-            AuthWebView.CoreWebView2.Navigate(authUrl);
+
+            AuthWebView.CoreWebView2.NavigationStarting -= OnWebViewNavigationStarting;
+            AuthWebView.CoreWebView2.NavigationStarting += OnWebViewNavigationStarting;
+
+            AuthWebView.CoreWebView2.Navigate(AuthService.BuildAuthorizeUrl());
         }
         catch (Exception ex)
         {
-            MessageBox.Show(LocalizationService.F("auth.init_error", ex.Message), LocalizationService.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(
+                LocalizationService.F("auth.init_error", ex.Message),
+                LocalizationService.T("common.error"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void OnWebViewNavigationStarting(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationStartingEventArgs args)
+    {
+        if (_isProcessing)
+            return;
+
+        if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var uri))
+            return;
+
+        if (uri.Host == "login.live.com" &&
+            uri.AbsolutePath == "/oauth20_desktop.srf" &&
+            !string.IsNullOrWhiteSpace(System.Web.HttpUtility.ParseQueryString(uri.Query).Get("code")))
+        {
+            _isProcessing = true;
+            var code = System.Web.HttpUtility.ParseQueryString(uri.Query).Get("code");
+            args.Cancel = true;
+            _ = CompleteAuthAsync(code);
         }
     }
 
@@ -90,13 +95,14 @@ public partial class AuthWindow : Window, ILocalizable
             Dispatcher.Invoke(() =>
             {
                 if (success)
-                    Close();
-                else
                 {
-                    _isProcessing = false;
-                    ApplyLocalization();
-                    AuthWebView.CoreWebView2?.Reload();
+                    Close();
+                    return;
                 }
+
+                _isProcessing = false;
+                ApplyLocalization();
+                AuthWebView.CoreWebView2?.Reload();
             });
         }
         catch (Exception ex)
@@ -113,12 +119,10 @@ public partial class AuthWindow : Window, ILocalizable
             });
         }
     }
-    
+
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape && !_isProcessing)
-        {
             Close();
-        }
     }
 }

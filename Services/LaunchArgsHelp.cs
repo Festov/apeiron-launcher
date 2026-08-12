@@ -12,10 +12,12 @@ public static class LaunchArgsHelp
 
           --launch <name>     Launch instance by name, display name, or ID
           --launch=<name>     Same as above
+          --launch            Launch the last-played instance
           --help, -h, /?      Show this help
 
         Examples:
           Apeiron.exe --launch "1.20.1 - Fabric"
           Apeiron.exe --launch=abc123-build-id
+          Apeiron.exe --launch
         """;
 }

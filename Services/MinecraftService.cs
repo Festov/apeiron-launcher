@@ -22,9 +22,13 @@ public class MinecraftService
     private readonly ManifestCache _manifestCache;
 
     private const int MAX_RETRY = 3;
+    private int _assetParallelism = 24;
 
     public event Action<int, string>? ProgressChanged;
     public event Action<string>? Log;
+
+    public void SetAssetParallelism(int value) =>
+        _assetParallelism = Math.Clamp(value, 4, 64);
 
     public MinecraftService(string? minecraftDir = null)
     {
@@ -106,21 +110,25 @@ public class MinecraftService
             {
                 var total = libraries.Count;
                 var processed = 0;
-
-                foreach (var lib in libraries)
+                var options = new ParallelOptions
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    processed++;
-                    ProgressChanged?.Invoke(
-                        (int)((double)processed / total * 100),
-                        LocalizationService.F("log.mc.downloading_library", lib["name"]?.ToString() ?? "library"));
+                    MaxDegreeOfParallelism = Math.Min(8, _assetParallelism),
+                    CancellationToken = cancellationToken
+                };
 
+                await Parallel.ForEachAsync(libraries, options, async (lib, ct) =>
+                {
                     await LibraryHelper.DownloadFromVersionLibraryAsync(
                         lib,
                         _librariesDir,
-                        (url, path, sha1, ct) => DownloadFileWithRetry(url, path, sha1, ct),
-                        cancellationToken);
-                }
+                        (url, path, sha1, token) => DownloadFileWithRetry(url, path, sha1, token),
+                        ct);
+
+                    var done = Interlocked.Increment(ref processed);
+                    ProgressChanged?.Invoke(
+                        (int)((double)done / total * 100),
+                        LocalizationService.F("log.mc.downloading_library", lib["name"]?.ToString() ?? "library"));
+                });
             }
 
             await EnsureLwjglUnsafeLibrary(versionData, cancellationToken);
@@ -276,7 +284,7 @@ public class MinecraftService
 
             Log?.Invoke(LocalizationService.F("log.mc.assets_total", total));
 
-            var options = new ParallelOptions { MaxDegreeOfParallelism = 20, CancellationToken = cancellationToken };
+            var options = new ParallelOptions { MaxDegreeOfParallelism = _assetParallelism, CancellationToken = cancellationToken };
             var properties = objects.Properties().ToList();
 
             await Task.Run(() =>
@@ -285,16 +293,21 @@ public class MinecraftService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var hash = prop.Value?["hash"]?.ToString();
-                    if (string.IsNullOrEmpty(hash)) return;
+                    if (string.IsNullOrEmpty(hash) || hash.Length < 2) return;
 
                     var subDir = hash.Substring(0, 2);
                     var objectDir = Path.Combine(assetsDir, subDir);
                     var objectPath = Path.Combine(objectDir, hash);
 
-                    if (File.Exists(objectPath))
+                    if (File.Exists(objectPath) && LibraryHelper.VerifySha1(objectPath, hash))
                     {
                         Interlocked.Increment(ref downloaded);
                         return;
+                    }
+
+                    if (File.Exists(objectPath))
+                    {
+                        try { File.Delete(objectPath); } catch { }
                     }
 
                     var url = $"https://resources.download.minecraft.net/{subDir}/{hash}";

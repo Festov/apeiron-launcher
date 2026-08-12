@@ -22,6 +22,8 @@ public partial class EditBuildWindow : Window, ILocalizable
     public bool ReinstallRequested { get; private set; }
     public bool DeleteRequested { get; private set; }
     public bool DuplicateRequested { get; private set; }
+    public bool VerifyRequested { get; private set; }
+    public bool OpenModBrowserRequested { get; private set; }
 
     public EditBuildWindow(BuildInfo build, SettingsService settings)
     {
@@ -56,8 +58,35 @@ public partial class EditBuildWindow : Window, ILocalizable
         {
             ApplyLocalization();
             LocalizationService.Instance.LanguageChanged += OnLanguageChanged;
+            SyncModsListHeight();
+            _ = Dispatcher.BeginInvoke(SyncModsListHeight, System.Windows.Threading.DispatcherPriority.Loaded);
         };
+        SizeChanged += (_, _) => SyncModsListHeight();
         Closed += (_, _) => LocalizationService.Instance.LanguageChanged -= OnLanguageChanged;
+    }
+
+    private void SyncModsListHeight()
+    {
+        if (!IsLoaded || ActionsPanel == null || LeftTopPanel == null || LeftBottomPanel == null)
+            return;
+
+        ActionsPanel.UpdateLayout();
+        LeftTopPanel.UpdateLayout();
+        LeftBottomPanel.UpdateLayout();
+
+        var actionsHeight = ActionsPanel.ActualHeight;
+        if (actionsHeight <= 0)
+            return;
+
+        LeftColumn.MinHeight = actionsHeight;
+
+        if (ModsSection.Visibility != Visibility.Visible || ModsListBorder == null)
+            return;
+
+        // Fill leftover space between top fields and bottom fields/buttons.
+        var used = LeftTopPanel.ActualHeight + LeftBottomPanel.ActualHeight + ModsSection.Margin.Bottom;
+        var modsHeight = Math.Max(120, actionsHeight - used);
+        ModsListBorder.Height = modsHeight;
     }
 
     private void OnLanguageChanged() => Dispatcher.Invoke(ApplyLocalization);
@@ -95,6 +124,15 @@ public partial class EditBuildWindow : Window, ILocalizable
         BackupButton.ToolTip = LocalizationService.T("edit_build.backup_tooltip");
         DuplicateButton.Content = LocalizationService.T("edit_build.duplicate");
         ReinstallButton.Content = LocalizationService.T("edit_build.reinstall");
+        GameLogButton.Content = LocalizationService.T("edit_build.game_log");
+        GameLogButton.ToolTip = LocalizationService.T("edit_build.game_log_tooltip");
+        CrashesButton.Content = LocalizationService.T("edit_build.crashes");
+        CrashesButton.ToolTip = LocalizationService.T("edit_build.crashes_tooltip");
+        VerifyButton.Content = LocalizationService.T("edit_build.verify");
+        ModBrowserButton.Content = LocalizationService.T("edit_build.mod_browser");
+        SetIconButton.Content = LocalizationService.T("edit_build.set_icon");
+        ResourcePacksButton.Content = LocalizationService.T("edit_build.resourcepacks");
+        ShaderPacksButton.Content = LocalizationService.T("edit_build.shaderpacks");
         DeleteButton.Content = LocalizationService.T("edit_build.delete");
         CancelBtn.Content = LocalizationService.T("common.cancel");
         SaveBtn.Content = LocalizationService.T("common.save");
@@ -138,6 +176,21 @@ public partial class EditBuildWindow : Window, ILocalizable
             UseShellExecute = true
         });
     }
+
+    private void GameLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            GameLogHelper.OpenLatestLog(_build);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, LocalizationService.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private void CrashesButton_Click(object sender, RoutedEventArgs e) =>
+        GameLogHelper.OpenCrashReportsFolder(_build);
 
     private void OpenModsFolder_Click(object sender, RoutedEventArgs e)
     {
@@ -294,6 +347,73 @@ public partial class EditBuildWindow : Window, ILocalizable
         ReinstallRequested = true;
         DialogResult = true;
         Close();
+    }
+
+    private void VerifyButton_Click(object sender, RoutedEventArgs e)
+    {
+        VerifyRequested = true;
+        DialogResult = true;
+        Close();
+    }
+
+    private void ModBrowserButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenModBrowserRequested = true;
+        DialogResult = true;
+        Close();
+    }
+
+    private void SetIconButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = LocalizationService.T("edit_build.set_icon"),
+            Filter = LocalizationService.T("edit_build.icon_filter")
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            _build.EnsureInstanceFolders();
+            var dest = Path.Combine(_build.GetGameDir(), "icon.png");
+            File.Copy(dialog.FileName, dest, overwrite: true);
+            _build.IconPath = dest;
+            MessageBox.Show(
+                LocalizationService.T("edit_build.icon_set"),
+                LocalizationService.T("edit_build.set_icon"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, LocalizationService.T("common.error"), MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ResourcePacksButton_Click(object sender, RoutedEventArgs e)
+    {
+        InstancePackService.OpenFolder(_build.GetGameDir(), "resourcepacks");
+        var count = InstancePackService.ListPacks(_build.GetGameDir(), "resourcepacks").Count;
+        if (count > 0)
+            MessageBox.Show(
+                LocalizationService.F("edit_build.packs_count", count),
+                LocalizationService.T("edit_build.resourcepacks"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+    }
+
+    private void ShaderPacksButton_Click(object sender, RoutedEventArgs e)
+    {
+        InstancePackService.OpenFolder(_build.GetGameDir(), "shaderpacks");
+        var count = InstancePackService.ListPacks(_build.GetGameDir(), "shaderpacks").Count;
+        if (count > 0)
+            MessageBox.Show(
+                LocalizationService.F("edit_build.packs_count", count),
+                LocalizationService.T("edit_build.shaderpacks"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
     }
 
     private void DuplicateButton_Click(object sender, RoutedEventArgs e)

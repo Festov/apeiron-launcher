@@ -29,6 +29,7 @@ public static class AppHttp
             MaxAutomaticRedirections = 15,
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
             ConnectTimeout = TimeSpan.FromSeconds(45),
+            MaxConnectionsPerServer = 16,
             UseProxy = true,
             DefaultProxyCredentials = CredentialCache.DefaultCredentials,
             SslOptions = new SslClientAuthenticationOptions

@@ -62,7 +62,9 @@ public partial class AddBuildWindow : Window, ILocalizable
             LocalizationService.Instance.LanguageChanged += OnLanguageChanged;
             await LoadVersions();
             await OnTypeSelectionChangedAsync();
+            RecenterOnOwner();
         };
+        SizeChanged += (_, _) => RecenterOnOwner();
         Closed += (_, _) =>
         {
             LocalizationService.Instance.LanguageChanged -= OnLanguageChanged;
@@ -166,6 +168,32 @@ public partial class AddBuildWindow : Window, ILocalizable
             await LoadModpacksAsync();
 
         UpdateCreateButtonState();
+        _ = Dispatcher.BeginInvoke(RecenterOnOwner, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void RecenterOnOwner()
+    {
+        if (!IsLoaded || ActualWidth <= 0 || ActualHeight <= 0)
+            return;
+
+        UpdateLayout();
+
+        double left;
+        double top;
+        if (Owner != null && Owner.IsVisible)
+        {
+            left = Owner.Left + (Owner.ActualWidth - ActualWidth) / 2;
+            top = Owner.Top + (Owner.ActualHeight - ActualHeight) / 2;
+        }
+        else
+        {
+            var work = SystemParameters.WorkArea;
+            left = work.Left + (work.Width - ActualWidth) / 2;
+            top = work.Top + (work.Height - ActualHeight) / 2;
+        }
+
+        Left = Math.Max(SystemParameters.VirtualScreenLeft, left);
+        Top = Math.Max(SystemParameters.VirtualScreenTop, top);
     }
 
     private void LoaderComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
